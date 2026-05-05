@@ -1,0 +1,61 @@
+{
+  "name": "@genfire/sdk",
+  "version": "0.1.0",
+  "private": false,
+  "description": "TypeScript SDK for the GenFire Public API",
+  "keywords": [
+    "genfire",
+    "sdk",
+    "typescript",
+    "javascript",
+    "api",
+    "ai",
+    "video-generation",
+    "image-generation"
+  ],
+  "homepage": "https://github.com/genfireai/sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/genfireai/sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/genfireai/sdk/issues"
+  },
+  "author": "GenFire Team",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "funding": {
+    "type": "individual",
+    "url": "https://genfire.ai"
+  },
+  "packageManager": "npm@10",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}
