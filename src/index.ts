@@ -17,7 +17,8 @@ export type GenFireScope =
   | 'products:write'
   | 'workflows:read'
   | 'workflows:write'
-  | 'uploads:write';
+  | 'uploads:write'
+  | 'influencers:read';
 
 export type RunStatus = 'queued' | 'processing' | 'completed' | 'failed';
 export type BatchStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'partial';
@@ -286,12 +287,38 @@ export interface ListResponse<T> {
   data: T[];
 }
 
+export interface InfluencerMention {
+  handle: string;
+  influencer_id: string;
+}
+
 export interface CreateImageGenerationRequest {
   prompt: string;
   model?: string;
   aspect_ratio?: string;
   count?: number;
   image_url?: string;
+  /**
+   * Optional `[{ handle, influencer_id }]`. When supplied, the model auto-switches
+   * to its edit variant and the influencer's reference photos are injected as
+   * conditioning. Currently a single mention per request is supported.
+   */
+  mentions?: InfluencerMention[];
+}
+
+export type InfluencerStatus = 'draft' | 'ready' | 'archived';
+export type InfluencerSourceType = 'uploaded' | 'generated';
+
+export interface Influencer {
+  id: string;
+  object: 'influencer';
+  handle: string;
+  display_name: string;
+  status: InfluencerStatus;
+  source_type: InfluencerSourceType;
+  preview_url: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateVideoGenerationRequest {
@@ -641,6 +668,14 @@ export class GenFireClient {
 
   listModels(signal?: AbortSignal): Promise<ListResponse<Model>> {
     return this.request<ListResponse<Model>>('GET', '/models', { signal });
+  }
+
+  listInfluencers(signal?: AbortSignal): Promise<ListResponse<Influencer>> {
+    return this.request<ListResponse<Influencer>>('GET', '/influencers', { signal });
+  }
+
+  getInfluencer(influencerId: string, signal?: AbortSignal): Promise<Influencer> {
+    return this.request<Influencer>('GET', `/influencers/${encodeURIComponent(influencerId)}`, { signal });
   }
 
   listRuns(params: ListRunsParams = {}, signal?: AbortSignal): Promise<ListResponse<Run>> {
