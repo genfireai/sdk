@@ -1,6 +1,6 @@
 {
   "name": "@genfire/sdk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": false,
   "description": "TypeScript SDK for the GenFire Public API",
   "keywords": [
