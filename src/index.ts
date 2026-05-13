@@ -300,7 +300,7 @@ export interface CreateImageGenerationRequest {
   image_url?: string;
   /** image.gpt_image_2 only. One of: low, medium, high, auto. Defaults to high. */
   quality?: 'low' | 'medium' | 'high' | 'auto';
-  /** image.nano_banana_2 edit only. One of: 1K, 2K, 4K. */
+  /** Nano Banana family edit only (image.nano_banana, image.nano_banana_2, image.nano_banana_pro) — request must include image_url or mentions. One of: 1K, 2K, 4K. */
   resolution?: '1K' | '2K' | '4K';
   /**
    * Optional `[{ handle, influencer_id }]`. When supplied, the model auto-switches
