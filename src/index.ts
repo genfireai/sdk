@@ -391,6 +391,28 @@ export interface CreateSoundEffectRequest {
   loop?: boolean;
 }
 
+export interface CreateTranscriptionRequest {
+  /** Direct audio file URL. Provide exactly one of audio_url / video_url / youtube_url. */
+  audio_url?: string;
+  /** Direct video file URL; audio is extracted before transcription. */
+  video_url?: string;
+  /** A YouTube URL to download and transcribe (max 2 hours). */
+  youtube_url?: string;
+  /** Optional transcription model alias (defaults to transcription.whisper_v1). */
+  model?: string;
+}
+
+/** Shape of `run.output` for a completed transcription run. */
+export interface TranscriptionOutput {
+  transcript_id: string | null;
+  text: string;
+  language: string | null;
+  duration: number | null;
+  words: Array<{ word: string; start: number; end: number; probability?: number }>;
+  segments: Array<{ id: number; start: number; end: number; text: string }>;
+  audio_url: string | null;
+}
+
 export interface ExtractProductRequest {
   url: string;
 }
@@ -898,6 +920,20 @@ export class GenFireClient {
 
   createSoundEffect(input: CreateSoundEffectRequest, options: RequestOptions = {}): Promise<Run> {
     return this.request<Run>('POST', '/audio/sfx', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Transcribe audio or video to text (OpenAI Whisper) with word/segment
+   * timestamps. Async — returns a Run; poll it until completed, then read
+   * `run.output` (see {@link TranscriptionOutput}).
+   */
+  createTranscription(input: CreateTranscriptionRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/audio/transcriptions', {
       body: input,
       idempotencyKey: options.idempotencyKey,
       signal: options.signal,
