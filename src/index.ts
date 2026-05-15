@@ -325,6 +325,24 @@ export interface Influencer {
   updated_at: string;
 }
 
+export interface Voice {
+  /** Pass this as `voice_id` to createSpeech(). Cloned voices look like `fal_cloned_<id>`. */
+  id: string;
+  object: 'voice';
+  name: string;
+  /** `cloned` = a voice you cloned; `stock` = a built-in ElevenLabs voice. */
+  type: 'cloned' | 'stock';
+  provider: string;
+  preview_url: string | null;
+  created_at: string | null;
+}
+
+export interface ListVoicesOptions {
+  /** Set to true to also include built-in ElevenLabs stock voices. */
+  includeStock?: boolean;
+  signal?: AbortSignal;
+}
+
 export interface CreateVideoGenerationRequest {
   prompt: string;
   model?: string;
@@ -672,6 +690,16 @@ export class GenFireClient {
 
   listModels(signal?: AbortSignal): Promise<ListResponse<Model>> {
     return this.request<ListResponse<Model>>('GET', '/models', { signal });
+  }
+
+  /**
+   * List the voices you can pass to {@link createSpeech} as `voice_id`.
+   * Returns your cloned voices by default; pass `{ includeStock: true }` to
+   * also include built-in ElevenLabs stock voices.
+   */
+  listVoices(options: ListVoicesOptions = {}): Promise<ListResponse<Voice>> {
+    const path = options.includeStock ? '/audio/voices?include=stock' : '/audio/voices';
+    return this.request<ListResponse<Voice>>('GET', path, { signal: options.signal });
   }
 
   listInfluencers(signal?: AbortSignal): Promise<ListResponse<Influencer>> {
