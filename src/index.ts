@@ -447,6 +447,13 @@ export interface WaitForRunOptions {
   signal?: AbortSignal;
 }
 
+export interface WaitForBatchOptions {
+  intervalMs?: number;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  onTick?: (batch: Batch, elapsedMs: number) => void;
+}
+
 export interface CreateUploadRequest {
   filename: string;
   content_type?: string;
@@ -797,6 +804,26 @@ export class GenFireClient {
       signal: options.signal,
       headers: options.headers
     });
+  }
+
+  async waitForBatch(batchId: string, options: WaitForBatchOptions = {}): Promise<Batch> {
+    const timeoutMs = options.timeoutMs ?? 30 * 60 * 1000;
+    const intervalMs = options.intervalMs ?? 5_000;
+    const startedAt = Date.now();
+
+    while (true) {
+      const batch = await this.getBatch(batchId, options.signal);
+      options.onTick?.(batch, Date.now() - startedAt);
+      if (batch.status === 'completed' || batch.status === 'failed' || batch.status === 'partial') {
+        return batch;
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        throw new Error(`Timed out waiting for batch ${batchId}.`);
+      }
+
+      await sleep(intervalMs, options.signal);
+    }
   }
 
   createUpload(input: CreateUploadRequest, options: RequestOptions = {}): Promise<Upload> {
