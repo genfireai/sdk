@@ -297,7 +297,14 @@ export interface CreateImageGenerationRequest {
   model?: string;
   aspect_ratio?: string;
   count?: number;
+  /** Single source image to edit. Use `image_urls` for multi-image edits. */
   image_url?: string;
+  /**
+   * Up to 14 source image URLs for a multi-image edit. Supported by
+   * image.gpt_image_2, Seedream, Qwen Image 2 and the Nano Banana family;
+   * Grok uses at most the first 3. Routes through the model's edit variant.
+   */
+  image_urls?: string[];
   /** image.gpt_image_2 only. One of: low, medium, high, auto. Defaults to high. */
   quality?: 'low' | 'medium' | 'high' | 'auto';
   /** Nano Banana family edit only (image.nano_banana, image.nano_banana_2, image.nano_banana_pro) — request must include image_url or mentions. One of: 1K, 2K, 4K. */
