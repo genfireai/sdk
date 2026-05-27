@@ -387,6 +387,10 @@ export interface CreateMusicRequest {
   with_timestamps?: boolean;
   force_instrumental?: boolean;
   output_format?: string;
+  /** Image URL used as inspiration for the generated music. Lyria 3 Pro only. */
+  image_url?: string;
+  /** Description of what to exclude from the generated audio. Lyria 3 Pro only. */
+  negative_prompt?: string;
 }
 
 export interface CreateSoundEffectRequest {
