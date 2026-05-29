@@ -355,6 +355,8 @@ export interface CreateVideoGenerationRequest {
   model?: string;
   aspect_ratio?: string;
   duration?: number;
+  /** Output resolution (e.g. '480p', '720p', '1080p'). Supported values and pricing are per-model — see `resolutions` in the model's `limits` from `listModels()`. Higher resolutions cost more credits. */
+  resolution?: string;
   image_url?: string;
   generate_audio?: boolean;
 }
