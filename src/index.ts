@@ -395,6 +395,88 @@ export interface CreateMusicRequest {
   negative_prompt?: string;
 }
 
+/** Background-music config for a faceless reel. */
+export interface FacelessReelMusic {
+  source: 'none' | 'preset' | 'ai' | 'library';
+  /** Curated track id (source 'preset') — see {@link GenFireClient.listFacelessReelMusicPresets}. */
+  preset_id?: string;
+  /** Prompt for an AI-generated track (source 'ai'). */
+  prompt?: string;
+  /** A track id from your library (source 'library'). */
+  track_id?: string;
+}
+
+export interface CreateFacelessReelRequest {
+  /** Subject/seed for the reel. Use a phrase or "Surprise me with a fresh idea". */
+  topic: string;
+  /** Niche preset id — see {@link GenFireClient.listFacelessReelPresets}. */
+  preset_id?: string;
+  /** Visual style id — see {@link GenFireClient.listFacelessReelStyles}. Defaults to the preset's recommended style. */
+  style_id?: string;
+  /** Target length in seconds (10–120). Drives script + scene count. */
+  target_duration_sec?: number;
+  /** Caption font/animation preset id — see {@link GenFireClient.listFacelessReelCaptionPresets}. */
+  caption_preset_id?: string;
+  /** Override the caption animation: highlight | pop | typewriter | classic | background. */
+  caption_animation?: string;
+  /** TTS voice id (ElevenLabs or FAL/Qwen). */
+  voice_id?: string;
+  /** Extra creative direction for the script model. */
+  direction?: string;
+  /** Author a fully custom story instead of a niche preset. */
+  custom_story?: { prompt: string; scene_hint?: string };
+  music?: FacelessReelMusic;
+}
+
+export interface EstimateFacelessReelCostRequest {
+  preset_id?: string;
+  target_duration_sec?: number;
+  music?: Pick<FacelessReelMusic, 'source'>;
+}
+
+export interface FacelessReelCostEstimate {
+  object: 'reel_cost_estimate';
+  images: number;
+  voiceover: number;
+  music: number;
+  total: number;
+  sceneCount: number;
+}
+
+export interface FacelessReelSubscriptionInput {
+  label?: string;
+  preset_id?: string;
+  style_id?: string;
+  caption_preset_id?: string;
+  voice_id?: string;
+  target_duration_sec?: number;
+  music?: FacelessReelMusic;
+  /** 'ai-auto' for fresh ideas, 'user-list' to rotate `topic_seeds`. */
+  topic_source?: 'ai-auto' | 'user-list';
+  topic_seeds?: string[];
+  /** Reels per day (1–6). */
+  cadence_per_day?: number;
+  /** Local "HH:mm" times; length must equal `cadence_per_day`. */
+  slots?: string[];
+  /** IANA timezone, e.g. 'America/New_York'. */
+  timezone?: string;
+  enabled?: boolean;
+}
+
+export interface FacelessReelSubscription {
+  id: string;
+  object: 'reel_subscription';
+  enabled: boolean;
+  label?: string;
+  presetId: string;
+  captionPresetId: string;
+  voiceId: string;
+  cadencePerDay: number;
+  slots: string[];
+  timezone: string;
+  [key: string]: any;
+}
+
 export interface CreateSoundEffectRequest {
   prompt: string;
   model?: string;
@@ -983,6 +1065,80 @@ export class GenFireClient {
 
   extractProduct(input: ExtractProductRequest, options: RequestOptions = {}): Promise<Run> {
     return this.request<Run>('POST', '/products/extract', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Generate a vertical (9:16) faceless reel end-to-end (script → voiceover →
+   * style-locked images → music → captioned video). Async — returns a Run in
+   * `processing`; poll it with {@link waitForRun} until completed, then read
+   * `run.output.video_url`.
+   */
+  createFacelessReel(input: CreateFacelessReelRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/faceless-reels/generations', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Per-config credit estimate for a faceless reel, without generating. */
+  estimateFacelessReelCost(input: EstimateFacelessReelCostRequest = {}, signal?: AbortSignal): Promise<FacelessReelCostEstimate> {
+    return this.request<FacelessReelCostEstimate>('POST', '/faceless-reels/estimate-cost', { body: input, signal });
+  }
+
+  /** List niche presets accepted as `preset_id`. */
+  listFacelessReelPresets(signal?: AbortSignal): Promise<ListResponse<Record<string, any>>> {
+    return this.request<ListResponse<Record<string, any>>>('GET', '/faceless-reels/presets', { signal });
+  }
+
+  /** List visual styles accepted as `style_id`. */
+  listFacelessReelStyles(signal?: AbortSignal): Promise<ListResponse<Record<string, any>>> {
+    return this.request<ListResponse<Record<string, any>>>('GET', '/faceless-reels/styles', { signal });
+  }
+
+  /** List curated background-music tracks (music.source 'preset'). */
+  listFacelessReelMusicPresets(signal?: AbortSignal): Promise<ListResponse<Record<string, any>>> {
+    return this.request<ListResponse<Record<string, any>>>('GET', '/faceless-reels/music-presets', { signal });
+  }
+
+  /** List caption font/animation presets accepted as `caption_preset_id`. */
+  listFacelessReelCaptionPresets(signal?: AbortSignal): Promise<ListResponse<Record<string, any>>> {
+    return this.request<ListResponse<Record<string, any>>>('GET', '/faceless-reels/caption-presets', { signal });
+  }
+
+  /** List your recurring reel subscriptions ("Stories"). */
+  listFacelessReelSubscriptions(signal?: AbortSignal): Promise<ListResponse<FacelessReelSubscription>> {
+    return this.request<ListResponse<FacelessReelSubscription>>('GET', '/faceless-reels/subscriptions', { signal });
+  }
+
+  /** Create a recurring reel subscription. */
+  createFacelessReelSubscription(input: FacelessReelSubscriptionInput, signal?: AbortSignal): Promise<FacelessReelSubscription> {
+    return this.request<FacelessReelSubscription>('POST', '/faceless-reels/subscriptions', { body: input, signal });
+  }
+
+  /** Update a reel subscription. Changing cadence/slots/timezone reschedules it. */
+  updateFacelessReelSubscription(id: string, input: FacelessReelSubscriptionInput, signal?: AbortSignal): Promise<FacelessReelSubscription> {
+    return this.request<FacelessReelSubscription>('PATCH', `/faceless-reels/subscriptions/${encodeURIComponent(id)}`, { body: input, signal });
+  }
+
+  /** Delete a reel subscription. */
+  deleteFacelessReelSubscription(id: string, signal?: AbortSignal): Promise<{ object: 'reel_subscription'; id: string; deleted: boolean }> {
+    return this.request<{ object: 'reel_subscription'; id: string; deleted: boolean }>('DELETE', `/faceless-reels/subscriptions/${encodeURIComponent(id)}`, { signal });
+  }
+
+  /**
+   * Generate one reel now for a subscription, using its settings. Async —
+   * returns a Run; poll {@link waitForRun}. Throws on 409 if a reel is already
+   * generating for that subscription.
+   */
+  runFacelessReelSubscriptionNow(id: string, input: { topic?: string } = {}, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', `/faceless-reels/subscriptions/${encodeURIComponent(id)}/run-now`, {
       body: input,
       idempotencyKey: options.idempotencyKey,
       signal: options.signal,
