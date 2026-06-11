@@ -177,6 +177,20 @@ export interface RunError {
   message: string;
 }
 
+/** Live pipeline progress, present on GET /v1/runs/:id while a faceless-reel
+ *  run is processing (derived from the reel's stage checkpoints). */
+export interface RunProgress {
+  /** 0–100 share of the pipeline completed. */
+  percent: number;
+  /** Short label of the stage currently running, e.g. "Generating visuals 3/8". */
+  label: string;
+  /** 0-based index of the current stage. */
+  step_index: number;
+  /** Total number of stages. */
+  step_count: number;
+  stages: Array<{ key: string; label: string; status: 'done' | 'active' | 'pending' }>;
+}
+
 export interface Run {
   id: string;
   object: 'run';
@@ -191,6 +205,7 @@ export interface Run {
   error: RunError | null;
   resource_id: string | null;
   provider_request_id: string | null;
+  progress?: RunProgress;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
