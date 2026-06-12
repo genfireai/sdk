@@ -17,6 +17,8 @@ export type GenFireScope =
   | 'products:write'
   | 'workflows:read'
   | 'workflows:write'
+  | 'reels:read'
+  | 'reels:write'
   | 'uploads:write'
   | 'influencers:read';
 
