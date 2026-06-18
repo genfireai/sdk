@@ -349,6 +349,18 @@ export interface Influencer {
   updated_at: string;
 }
 
+export interface CreateInfluencerOptions {
+  /** Short @-mention handle (letters, digits, underscores), e.g. `maya`. Lowercased; unique per account. */
+  handle: string;
+  /** 1–8 absolute https URLs of reference photos. At least one should show a clear, front-facing face. */
+  photoUrls: string[];
+  /** Human-friendly name shown in the influencer list. Defaults to `handle`. */
+  displayName?: string;
+  /** Idempotency key. Reusing it collapses retries into one creation (and one credit charge). */
+  idempotencyKey?: string;
+  signal?: AbortSignal;
+}
+
 export interface Voice {
   /** Pass this as `voice_id` to createSpeech(). Cloned voices look like `fal_cloned_<id>`. */
   id: string;
@@ -365,6 +377,25 @@ export interface ListVoicesOptions {
   /** Set to true to also include built-in ElevenLabs stock voices. */
   includeStock?: boolean;
   signal?: AbortSignal;
+}
+
+export interface CreateGameGenerationRequest {
+  /** What game to build — or, with `game_id`, the change to make. */
+  prompt: string;
+  /** Iterate on an existing game: its `game_id` from a prior generation. Re-generates in place at the same `play_url`. */
+  game_id?: string;
+  /** Codegen model alias (e.g. `claude-opus-4-8`). Defaults to Opus. */
+  model?: string;
+  /** Up to 16 asset URLs (images / GLB / audio) to wire into the game. */
+  asset_urls?: string[];
+  /** Build with realtime multiplayer via the GenFire relay. */
+  multiplayer?: boolean;
+}
+
+export interface PublishGameResponse {
+  id: string;
+  object: 'game';
+  is_public: boolean;
 }
 
 export interface CreateVideoGenerationRequest {
@@ -851,6 +882,28 @@ export class GenFireClient {
     return this.request<Influencer>('GET', `/influencers/${encodeURIComponent(influencerId)}`, { signal });
   }
 
+  /**
+   * Create a reusable influencer character from 1–8 reference photos. The bytes
+   * are copied into durable storage and a character reference sheet is generated
+   * to lock the identity, after which the influencer is returned in `ready`
+   * status — immediately usable via `mentions` in image generation.
+   *
+   * This is a synchronous, **billable** call (sheet generation) that typically
+   * takes 30–60 seconds. `photo_urls` must be absolute https URLs; upload local
+   * files with `uploadFile()` first and pass the returned `asset_url`s.
+   */
+  createInfluencer(options: CreateInfluencerOptions): Promise<Influencer> {
+    return this.request<Influencer>('POST', '/influencers', {
+      body: {
+        handle: options.handle,
+        display_name: options.displayName,
+        photo_urls: options.photoUrls
+      },
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal
+    });
+  }
+
   listRuns(params: ListRunsParams = {}, signal?: AbortSignal): Promise<ListResponse<Run>> {
     return this.request<ListResponse<Run>>('GET', '/runs', {
       query: {
@@ -1061,6 +1114,36 @@ export class GenFireClient {
     return this.request<Run>('POST', '/audio/sfx', {
       body: input,
       idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Build a fully-playable, self-contained HTML browser game from a prompt.
+   * Returns a Run whose `output` carries `game_id`, `play_url` (a public,
+   * shareable hosted URL — no install), `thumbnail_url`, and `title`. Iterate
+   * on an existing game by passing `game_id` with a change prompt. Usually
+   * completes synchronously (may take up to a minute).
+   */
+  generateGame(input: CreateGameGenerationRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/games/generations', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Publish a completed game you own to the public GenFire games gallery
+   * (genfire.ai/games), or unpublish it with `publish: false`. The game's
+   * `play_url` is shareable whether or not it is published — this only controls
+   * the public marketplace listing.
+   */
+  publishGame(gameId: string, publish = true, options: RequestOptions = {}): Promise<PublishGameResponse> {
+    return this.request<PublishGameResponse>('POST', `/games/${encodeURIComponent(gameId)}/publish`, {
+      body: { publish },
       signal: options.signal,
       headers: options.headers
     });
