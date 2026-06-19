@@ -1121,10 +1121,11 @@ export class GenFireClient {
 
   /**
    * Build a fully-playable, self-contained HTML browser game from a prompt.
-   * Returns a Run whose `output` carries `game_id`, `play_url` (a public,
-   * shareable hosted URL — no install), `thumbnail_url`, and `title`. Iterate
-   * on an existing game by passing `game_id` with a change prompt. Usually
-   * completes synchronously (may take up to a minute).
+   * Async — returns a queued Run; the codegen runs on a worker (usually 1–3
+   * min). Poll it with `waitForRun`, then read `run.output` for `game_id`,
+   * `play_url` (a public, shareable hosted URL — no install), `thumbnail_url`,
+   * and `title`. Iterate on an existing game by passing `game_id` with a change
+   * prompt.
    */
   generateGame(input: CreateGameGenerationRequest, options: RequestOptions = {}): Promise<Run> {
     return this.request<Run>('POST', '/games/generations', {
