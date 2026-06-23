@@ -403,10 +403,12 @@ export interface CreateVideoGenerationRequest {
   model?: string;
   aspect_ratio?: string;
   duration?: number;
-  /** Output resolution (e.g. '480p', '720p', '1080p'). Supported values and pricing are per-model — see `resolutions` in the model's `limits` from `listModels()`. Higher resolutions cost more credits. */
+  /** Output resolution (e.g. '480p', '720p', '1080p', '4k'). Supported values and pricing are per-model — see `resolutions` in the model's `limits` from `listModels()`. Higher resolutions cost more credits. */
   resolution?: string;
   image_url?: string;
   generate_audio?: boolean;
+  /** Output encoding bitrate for Seedance 2.0: 'standard' or 'high'. 'high' requests a larger, higher-quality encode at no extra credit cost. */
+  bitrate_mode?: 'standard' | 'high';
 }
 
 export interface CreateLipsyncGenerationRequest {
