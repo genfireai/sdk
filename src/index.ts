@@ -463,6 +463,11 @@ export interface FacelessReelMusic {
  *  - `energetic`: corner punch-ins + handheld shake */
 export type MotionVibe = 'auto' | 'calm' | 'dynamic' | 'energetic';
 
+/** i2v model used for an "animated hook" (a real video clip on the first scene).
+ *  - `grok`: Grok Imagine v1.5 (recommended)
+ *  - `seedance-mini`: Seedance 2.0 mini (cheaper) */
+export type ReelVideoModel = 'grok' | 'seedance-mini';
+
 export interface CreateFacelessReelRequest {
   /** Subject/seed for the reel. Use a phrase or "Surprise me with a fresh idea". */
   topic: string;
@@ -480,6 +485,11 @@ export interface CreateFacelessReelRequest {
   voice_id?: string;
   /** Camera-motion feel for the slideshow. Defaults to 'auto' (per-niche). */
   motion_vibe?: MotionVibe;
+  /** Premium: animate the FIRST scene with a real i2v video clip (rest stay
+   *  still-image Ken-Burns). Adds the i2v clip cost. Default false. */
+  animated_hook?: boolean;
+  /** i2v model the animated hook uses. Default 'grok'. */
+  video_model?: ReelVideoModel;
   /** Extra creative direction for the script model. */
   direction?: string;
   /** Author a fully custom story instead of a niche preset. */
@@ -491,6 +501,8 @@ export interface EstimateFacelessReelCostRequest {
   preset_id?: string;
   target_duration_sec?: number;
   music?: Pick<FacelessReelMusic, 'source'>;
+  animated_hook?: boolean;
+  video_model?: ReelVideoModel;
 }
 
 export interface FacelessReelCostEstimate {
@@ -498,6 +510,8 @@ export interface FacelessReelCostEstimate {
   images: number;
   voiceover: number;
   music: number;
+  /** i2v clips (animated hook = 1 clip). 0 when no animation requested. */
+  videoClips: number;
   total: number;
   sceneCount: number;
 }
@@ -510,6 +524,10 @@ export interface FacelessReelSubscriptionInput {
   voice_id?: string;
   /** Camera-motion feel for the slideshow. Defaults to 'auto' (per-niche). */
   motion_vibe?: MotionVibe;
+  /** Premium: animate the first scene with an i2v clip. Default false. */
+  animated_hook?: boolean;
+  /** i2v model for the animated hook. Default 'grok'. */
+  video_model?: ReelVideoModel;
   target_duration_sec?: number;
   music?: FacelessReelMusic;
   /** 'ai-auto' for fresh ideas, 'user-list' to rotate `topic_seeds`. */
