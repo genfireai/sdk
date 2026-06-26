@@ -456,6 +456,13 @@ export interface FacelessReelMusic {
   track_id?: string;
 }
 
+/** Camera-motion feel for a reel's image slideshow.
+ *  - `auto`: per-niche default (unchanged behavior)
+ *  - `calm`: slow pans + subtle zoom
+ *  - `dynamic`: mixed pans + zooms
+ *  - `energetic`: corner punch-ins + handheld shake */
+export type MotionVibe = 'auto' | 'calm' | 'dynamic' | 'energetic';
+
 export interface CreateFacelessReelRequest {
   /** Subject/seed for the reel. Use a phrase or "Surprise me with a fresh idea". */
   topic: string;
@@ -471,6 +478,8 @@ export interface CreateFacelessReelRequest {
   caption_animation?: string;
   /** TTS voice id (ElevenLabs or FAL/Qwen). */
   voice_id?: string;
+  /** Camera-motion feel for the slideshow. Defaults to 'auto' (per-niche). */
+  motion_vibe?: MotionVibe;
   /** Extra creative direction for the script model. */
   direction?: string;
   /** Author a fully custom story instead of a niche preset. */
@@ -499,6 +508,8 @@ export interface FacelessReelSubscriptionInput {
   style_id?: string;
   caption_preset_id?: string;
   voice_id?: string;
+  /** Camera-motion feel for the slideshow. Defaults to 'auto' (per-niche). */
+  motion_vibe?: MotionVibe;
   target_duration_sec?: number;
   music?: FacelessReelMusic;
   /** 'ai-auto' for fresh ideas, 'user-list' to rotate `topic_seeds`. */
