@@ -20,7 +20,10 @@ export type GenFireScope =
   | 'reels:read'
   | 'reels:write'
   | 'uploads:write'
-  | 'influencers:read';
+  | 'influencers:read'
+  | 'influencers:write'
+  | 'elements:read'
+  | 'elements:write';
 
 export type RunStatus = 'queued' | 'processing' | 'completed' | 'failed';
 export type BatchStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'partial';
@@ -358,6 +361,36 @@ export interface CreateInfluencerOptions {
   displayName?: string;
   /** Idempotency key. Reusing it collapses retries into one creation (and one credit charge). */
   idempotencyKey?: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * A reusable named image element (a prop — product, logo, object) referenced in
+ * a video prompt by `@handle`. Unlike an influencer it's a single flat image;
+ * creation is synchronous and free (no generation).
+ */
+export interface Element {
+  id: string;
+  object: 'element';
+  handle: string;
+  name: string;
+  image_url: string;
+  thumbnail_url: string | null;
+  source_type: string;
+  aspect_ratio: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateElementOptions {
+  /** Human-friendly name, e.g. `Red Bottle`. Also the in-prompt phrase ("the Red Bottle") when the @handle resolves. */
+  name: string;
+  /** Absolute https URL of the element image. Upload local files with `uploadFile()` first and pass the `asset_url`. */
+  imageUrl: string;
+  /** Short @-mention handle (letters, digits, underscores), e.g. `redbottle`. Lowercased; auto-derived from `name` if omitted; unique per account. */
+  handle?: string;
+  /** Optional aspect ratio of the image, e.g. `1:1`, `9:16`. Informational only. */
+  aspectRatio?: string;
   signal?: AbortSignal;
 }
 
@@ -932,6 +965,42 @@ export class GenFireClient {
       },
       idempotencyKey: options.idempotencyKey,
       signal: options.signal
+    });
+  }
+
+  /** List your reusable image elements (named props referenced by `@handle`). */
+  listElements(signal?: AbortSignal): Promise<ListResponse<Element>> {
+    return this.request<ListResponse<Element>>('GET', '/elements', { signal });
+  }
+
+  getElement(elementId: string, signal?: AbortSignal): Promise<Element> {
+    return this.request<Element>('GET', `/elements/${encodeURIComponent(elementId)}`, { signal });
+  }
+
+  /**
+   * Create a reusable image element from a single image URL. Synchronous and
+   * free (no generation) — returns the element in `ready` status immediately.
+   * Reference it later by writing `@handle` in a video generation prompt on a
+   * reference-capable model (Seedance, Veo 3.1 reference, or Grok reference).
+   * `imageUrl` must be an absolute https URL; upload local files with
+   * `uploadFile()` first and pass the returned `asset_url`.
+   */
+  createElement(options: CreateElementOptions): Promise<Element> {
+    return this.request<Element>('POST', '/elements', {
+      body: {
+        name: options.name,
+        image_url: options.imageUrl,
+        handle: options.handle,
+        aspect_ratio: options.aspectRatio
+      },
+      signal: options.signal
+    });
+  }
+
+  async deleteElement(elementId: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<void> {
+    await this.request<void>('DELETE', `/elements/${encodeURIComponent(elementId)}`, {
+      signal: options.signal,
+      headers: options.headers
     });
   }
 
