@@ -981,7 +981,7 @@ export class GenFireClient {
    * Create a reusable image element from a single image URL. Synchronous and
    * free (no generation) — returns the element in `ready` status immediately.
    * Reference it later by writing `@handle` in a video generation prompt on a
-   * reference-capable model (Seedance, Veo 3.1 reference, or Grok reference).
+   * reference-capable model (Seedance, Veo 3.1 reference, Gemini Omni Flash reference, or Grok reference).
    * `imageUrl` must be an absolute https URL; upload local files with
    * `uploadFile()` first and pass the returned `asset_url`.
    */
