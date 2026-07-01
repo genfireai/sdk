@@ -167,6 +167,49 @@ export interface PricingEntry {
   notes?: string;
 }
 
+export interface EstimateCostRequest {
+  /** Model alias from listModels(), e.g. 'video.seedance_2_0'. Required. */
+  model: string;
+  // Video
+  resolution?: string;
+  duration?: number;
+  generate_audio?: boolean;
+  count?: number;
+  image_url?: string;
+  source_video_url?: string;
+  reference_image_urls?: string[];
+  first_frame_url?: string;
+  last_frame_url?: string;
+  // Image
+  quality?: string;
+  // 3D
+  should_texture?: boolean;
+  enable_pbr?: boolean;
+  enable_rigging?: boolean;
+  // Speech
+  text?: string;
+  character_count?: number;
+  voice_id?: string;
+  // Music / SFX
+  duration_seconds?: number;
+  music_length_ms?: number;
+  include_details?: boolean;
+  with_timestamps?: boolean;
+  // Lipsync
+  audio_url?: string;
+  audio_base64?: string;
+}
+
+export interface CostEstimate {
+  object: 'cost_estimate';
+  model: string;
+  capability: string;
+  /** Exact total credits that will be charged for this configuration. */
+  credits: number;
+  unit: string;
+  breakdown: Record<string, unknown>;
+}
+
 export interface Workflow {
   id: string;
   object: 'workflow';
@@ -922,6 +965,15 @@ export class GenFireClient {
 
   listPricing(signal?: AbortSignal): Promise<ListResponse<PricingEntry>> {
     return this.request<ListResponse<PricingEntry>>('GET', '/models/pricing', { signal });
+  }
+
+  /**
+   * Get the EXACT credit cost for a specific generation config (resolution,
+   * duration, audio, count, quality, 3D add-ons). Unlike listPricing() which
+   * returns a base per-unit rate, this equals what will actually be billed.
+   */
+  estimateCost(input: EstimateCostRequest, signal?: AbortSignal): Promise<CostEstimate> {
+    return this.request<CostEstimate>('POST', '/models/estimate-cost', { body: input, signal });
   }
 
   listModels(signal?: AbortSignal): Promise<ListResponse<Model>> {
