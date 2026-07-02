@@ -501,10 +501,28 @@ export interface CreateLipsyncGenerationRequest {
 
 export interface CreateSpeechRequest {
   text: string;
-  voice_id: string;
+  /**
+   * Voice id. Required for ElevenLabs models (stock voice id or a cloned
+   * `fal_cloned_<id>`). For `speech.seed_audio_1_0` it is OPTIONAL and takes a
+   * Seed preset name (e.g. `vivi_mixed_en_zh_ja_es_id`) instead.
+   */
+  voice_id?: string;
   model?: string;
   voice_name?: string;
+  /** For `speech.seed_audio_1_0`: one of `wav`, `mp3`, `pcm`, `ogg_opus`. */
   output_format?: string;
+  /** Up to 3 reference audio URLs, referenced in `text` as @Audio1–@Audio3. Seed Audio 1.0 only; not with image_url. */
+  audio_urls?: string[];
+  /** Single reference image URL. Seed Audio 1.0 only; not with audio_urls. */
+  image_url?: string;
+  /** Output sample rate in Hz (8000/16000/24000/32000/44100/48000). Seed Audio 1.0 only. */
+  sample_rate?: number;
+  /** Speech speed 0.5–2. Seed Audio 1.0 only. */
+  speed?: number;
+  /** Volume 0.5–2. Seed Audio 1.0 only. */
+  volume?: number;
+  /** Pitch shift in semitones, -12..12. Seed Audio 1.0 only. */
+  pitch?: number;
 }
 
 export interface CreateMusicRequest {
