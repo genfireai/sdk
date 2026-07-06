@@ -650,6 +650,118 @@ export interface FacelessReelSubscription {
   [key: string]: any;
 }
 
+/** A recurring explainer character: an UPPERCASE name plus ONE fixed visual
+ *  identity that stays consistent across every scene it appears in. */
+export interface ExplainerScriptCastMember {
+  /** UPPERCASE name the beats refer to, e.g. "MAYA". */
+  name: string;
+  /** ONE fixed visual identity (age, look, wardrobe). Kept verbatim across scenes. */
+  description: string;
+}
+
+/** One agent-authored explainer beat (≈1 scene). */
+export interface ExplainerScriptBeat {
+  /** Spoken narration, word for word. May include ElevenLabs v3 [audio tags]
+   *  like [pause] or [whispers] — performance directions, never spoken. */
+  narration: string;
+  /** Storyboard shot-spec: the concrete subjects on screen, composition and
+   *  camera angle, setting, and quoted on-screen labels. No metaphors. */
+  visual: string;
+  /** Director's motion note (omni camera vocabulary). */
+  motion?: string;
+  /** 'anchored' (default) animates the style-locked frame; 'direct' lets the
+   *  video model design the visualization (chained/ref beats force anchored). */
+  render?: 'anchored' | 'direct';
+  /** Beat visually continues the previous shot (last-frame chaining). */
+  continues?: boolean;
+  /** 1-based indices into the request's `reference_images` this beat features. */
+  refs?: number[];
+  /** Up to 3 verbatim narration substrings, popped by keyword captions. */
+  emphasis?: string[];
+  /** Declared cast names featured in this beat. */
+  cast?: string[];
+}
+
+/** A complete agent-authored explainer script (cast + 3–100 ordered beats).
+ *  Passing one bypasses GenFire's internal LLM entirely — you author the whole
+ *  creative contract and GenFire is pure rendering. */
+export interface ExplainerScript {
+  /** Recurring characters (up to 3). */
+  cast?: ExplainerScriptCastMember[];
+  /** Ordered beats (3–100). Total narration length sets the film's runtime. */
+  beats: ExplainerScriptBeat[];
+}
+
+export interface CreateExplainerRequest {
+  /** What the explainer is about. Required even alongside a script (titling/metadata). */
+  topic: string;
+  /** Structured agent-authored script. When present, GenFire makes ZERO
+   *  internal LLM calls (no script writing, no storyboarding) — it renders
+   *  your beats verbatim, and the narration length sets the duration
+   *  (`target_duration_sec` is ignored). */
+  script?: ExplainerScript;
+  /** Plain-text script narrated verbatim; GenFire still storyboards the visuals. */
+  custom_script?: string;
+  /** Visual style id — see {@link GenFireClient.listExplainerStyles}. */
+  style_id?: string;
+  /** '16:9' (default) or '9:16'. */
+  aspect_ratio?: '16:9' | '9:16';
+  /** Target length in seconds (20–600, default 60). Ignored when `script` is present. */
+  target_duration_sec?: number;
+  /** TTS voice id. */
+  voice_id?: string;
+  /** How much of the film gets real video clips vs. still frames:
+   *  'full' (every scene, default) | 'mixed' | 'stills'. */
+  motion_level?: 'full' | 'mixed' | 'stills';
+  /** Background music (same shape as faceless reels). */
+  music?: FacelessReelMusic;
+  /** Captions are opt-in for explainers — pass a caption preset id
+   *  (see {@link GenFireClient.listFacelessReelCaptionPresets}) to burn them in. */
+  caption_preset_id?: string;
+  /** Vertical caption placement. */
+  caption_position?: 'top' | 'middle' | 'bottom';
+  /** 'full' shows every word; 'keywords' pops only the emphasis words. */
+  caption_mode?: 'full' | 'keywords';
+  /** Override the caption animation (see the caption presets catalog). */
+  caption_animation?: string;
+  /** Up to 8 https image URLs (products, characters, brands) that must appear
+   *  in the film. Beats reference them by 1-based index via `refs`. */
+  reference_images?: Array<{ url: string; label?: string }>;
+}
+
+export interface EstimateExplainerCostRequest {
+  /** Target length in seconds (20–600). Ignored when `script` is present. */
+  target_duration_sec?: number;
+  aspect_ratio?: '16:9' | '9:16';
+  motion_level?: 'full' | 'mixed' | 'stills';
+  voice_id?: string;
+  music?: Pick<FacelessReelMusic, 'source'>;
+  /** With a structured script, duration derives from the narration — the
+   *  quote matches what {@link GenFireClient.createExplainer} would charge. */
+  script?: ExplainerScript;
+}
+
+export interface ExplainerCostEstimate {
+  object: 'explainer_cost_estimate';
+  /** Duration the quote is based on (derived from `script` narration when present). */
+  effective_duration_sec: number;
+  images: number;
+  voiceover: number;
+  music: number;
+  /** Per-scene i2v video clips — `motion_level` drives how many scenes animate. */
+  videoClips: number;
+  total: number;
+  sceneCount: number;
+  /** How many of the scenes get real video clips. */
+  animatedScenes: number;
+}
+
+/** An explainer visual style preset, accepted as `style_id`. */
+export interface ExplainerStyle {
+  id: string;
+  label: string;
+}
+
 export interface CreateSoundEffectRequest {
   prompt: string;
   model?: string;
@@ -1415,6 +1527,36 @@ export class GenFireClient {
       signal: options.signal,
       headers: options.headers
     });
+  }
+
+  /**
+   * Generate an explainer film end-to-end (script → voiceover → style-locked
+   * frames → per-scene video clips → composed film). 20s–10min, 16:9 or 9:16.
+   * Pass a structured `script` to author every beat yourself — GenFire then
+   * makes zero internal LLM calls and purely renders. Async — returns a Run in
+   * `processing`; poll it with {@link waitForRun}. Long films render for a
+   * while (up to ~30 minutes for a 10-minute film), so pass a large
+   * `timeoutMs` (e.g. `45 * 60 * 1000`). The completed `run.output` is
+   * `{ reel_id, video_url, script, scenes, duration_seconds }`.
+   */
+  createExplainer(input: CreateExplainerRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/explainers/generations', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Per-config credit estimate for an explainer, without generating. */
+  estimateExplainerCost(input: EstimateExplainerCostRequest = {}, signal?: AbortSignal): Promise<ExplainerCostEstimate> {
+    return this.request<ExplainerCostEstimate>('POST', '/explainers/estimate-cost', { body: input, signal });
+  }
+
+  /** List explainer visual style presets accepted as `style_id`. */
+  async listExplainerStyles(signal?: AbortSignal): Promise<ExplainerStyle[]> {
+    const response = await this.request<ListResponse<ExplainerStyle>>('GET', '/explainers/styles', { signal });
+    return response.data;
   }
 
   listWebhooks(signal?: AbortSignal): Promise<ListResponse<WebhookEndpoint>> {
