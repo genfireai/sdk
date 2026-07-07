@@ -569,7 +569,7 @@ export interface CreateFacelessReelRequest {
   preset_id?: string;
   /** Visual style id — see {@link GenFireClient.listFacelessReelStyles}. Defaults to the preset's recommended style. */
   style_id?: string;
-  /** Target length in seconds (10–120). Drives script + scene count. */
+  /** Target length in seconds (10–600, up to 10 minutes). Drives script + scene count. */
   target_duration_sec?: number;
   /** Caption font/animation preset id — see {@link GenFireClient.listFacelessReelCaptionPresets}. */
   caption_preset_id?: string;
