@@ -526,12 +526,28 @@ export interface CreateSpeechRequest {
 }
 
 export interface CreateMusicRequest {
-  prompt: string;
+  /** Text prompt. Required unless composition_plan is provided; the two cannot be combined. */
+  prompt?: string;
+  /**
+   * Structured composition plan instead of a prompt (ElevenLabs models only).
+   * music_v1 shape: { positive_global_styles[], negative_global_styles[], sections[] }
+   * (per-section styles, duration_ms 3000–120000, lyric lines).
+   * music_v2 shape: { chunks[] } (per-chunk text with [Section]/{direction} markup,
+   * duration_ms, positive_styles[]). A chunks plan implies music.elevenlabs_music_v2.
+   * Duration and billing derive from the plan's summed durations.
+   */
+  composition_plan?: Record<string, unknown>;
   model?: string;
+  /** Desired length in seconds, 3–600. ElevenLabs prompt mode only. */
   duration_seconds?: number;
   include_details?: boolean;
   with_timestamps?: boolean;
+  /** Guarantee instrumental output. ElevenLabs prompt mode only. */
   force_instrumental?: boolean;
+  /** With a music_v1 composition_plan: enforce section durations exactly. */
+  respect_sections_durations?: boolean;
+  /** Random seed for more consistent results. ElevenLabs composition_plan mode only. */
+  seed?: number;
   output_format?: string;
   /** Image URL used as inspiration for the generated music. Lyria 3 Pro only. */
   image_url?: string;
