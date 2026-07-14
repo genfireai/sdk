@@ -395,13 +395,40 @@ export interface Influencer {
   updated_at: string;
 }
 
+/**
+ * Appearance spec for creating an influencer FROM SCRATCH (no photos).
+ * `gender`, `heritage` and `age` form the identity block that anchors the
+ * generated person; `prompt` is optional free-text detail.
+ */
+export interface InfluencerAppearance {
+  /** e.g. "woman", "man". */
+  gender: string;
+  /** Race/ethnicity, e.g. "korean", "black", "latina". */
+  heritage: string;
+  /** Age range. */
+  age: '18-21' | '21-25' | '25-30' | '30-40' | '40+';
+  /** Optional free-text descriptor, e.g. "freckles, platinum bob, green eyes, editorial look". */
+  prompt?: string;
+}
+
 export interface CreateInfluencerOptions {
-  /** Short @-mention handle (letters, digits, underscores), e.g. `maya`. Lowercased; unique per account. */
+  /**
+   * Short @-mention handle (letters, digits, underscores), e.g. `maya`.
+   * Lowercased; unique per account. This is the influencer's only name — the
+   * `display_name` in responses is derived from it ("sarah_j" → "Sarah J").
+   */
   handle: string;
-  /** 1–8 absolute https URLs of reference photos. At least one should show a clear, front-facing face. */
-  photoUrls: string[];
-  /** Human-friendly name shown in the influencer list. Defaults to `handle`. */
-  displayName?: string;
+  /**
+   * FROM-PHOTOS mode. 1–8 absolute https URLs of reference photos (clone a real
+   * person). At least one should show a clear, front-facing face. Provide this
+   * OR `appearance`, not both.
+   */
+  photoUrls?: string[];
+  /**
+   * FROM-SCRATCH mode. Generate a brand-new person from described traits (no
+   * photos). Provide this OR `photoUrls`, not both.
+   */
+  appearance?: InfluencerAppearance;
   /** Idempotency key. Reusing it collapses retries into one creation (and one credit charge). */
   idempotencyKey?: string;
   signal?: AbortSignal;
@@ -1145,22 +1172,23 @@ export class GenFireClient {
   }
 
   /**
-   * Create a reusable influencer character from 1–8 reference photos. The bytes
-   * are copied into durable storage and a character reference sheet is generated
-   * to lock the identity, after which the influencer is returned in `ready`
-   * status — immediately usable via `mentions` in image generation.
+   * Create a reusable influencer character, either FROM PHOTOS (`photoUrls` — a
+   * real person cloned from 1–8 reference photos) or FROM SCRATCH (`appearance`
+   * — a brand-new person generated from described traits). Provide exactly one.
    *
-   * This is a synchronous, **billable** call (sheet generation) that typically
-   * takes 30–60 seconds. `photo_urls` must be absolute https URLs; upload local
-   * files with `uploadFile()` first and pass the returned `asset_url`s.
+   * This is **asynchronous** and **billable**: the influencer is returned in
+   * `status: "creating"`, and the reference sheet (plus, for from-scratch, a
+   * hero photo) is generated server-side (~30–90s). Poll `getInfluencer(id)`
+   * until `status` is `ready` (or `failed`). For from-photos, `photoUrls` must
+   * be absolute https URLs; upload local files with `uploadFile()` first.
    */
   createInfluencer(options: CreateInfluencerOptions): Promise<Influencer> {
+    const body: Record<string, unknown> =
+      options.appearance && !options.photoUrls
+        ? { handle: options.handle, appearance: options.appearance }
+        : { handle: options.handle, photo_urls: options.photoUrls };
     return this.request<Influencer>('POST', '/influencers', {
-      body: {
-        handle: options.handle,
-        display_name: options.displayName,
-        photo_urls: options.photoUrls
-      },
+      body,
       idempotencyKey: options.idempotencyKey,
       signal: options.signal
     });
