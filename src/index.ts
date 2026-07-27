@@ -23,7 +23,9 @@ export type GenFireScope =
   | 'influencers:read'
   | 'influencers:write'
   | 'elements:read'
-  | 'elements:write';
+  | 'elements:write'
+  | 'brands:read'
+  | 'brands:write';
 
 export type RunStatus = 'queued' | 'processing' | 'completed' | 'failed';
 export type BatchStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'partial';
@@ -452,6 +454,82 @@ export interface Element {
   updated_at: string;
 }
 
+export interface BrandColor {
+  hex: string;
+  role: 'primary' | 'secondary' | 'background' | 'text' | 'accent' | 'cta';
+}
+
+export interface BrandFont {
+  name: string;
+  role: 'heading' | 'body';
+  source: 'google-fonts' | 'custom';
+  google_fonts_url: string | null;
+}
+
+export interface BrandVoice {
+  tone_adjectives: string[];
+  formality: number;
+  target_audience: string;
+  value_props: string[];
+  taglines: string[];
+  words_to_use: string[];
+  words_to_avoid: string[];
+  summary: string;
+}
+
+export interface BrandProduct {
+  id: string;
+  object: 'brand_product';
+  name: string;
+  description: string | null;
+  images: string[];
+  price: string | null;
+  /** ISO currency code when found (USD/EUR/…). */
+  currency: string | null;
+  source_url: string | null;
+  /** Key selling points extracted from the page copy. */
+  usps: string[];
+  /** Product category / collection (e.g. "Skincare", "Serums"). */
+  category: string | null;
+  /** Manufacturer/brand name as scraped (may differ from the brand entity). */
+  brand_name: string | null;
+  /** SKU / product code. */
+  sku: string | null;
+  /** Availability, e.g. "InStock", "OutOfStock". */
+  availability: string | null;
+  /** Structured specs (dimensions, materials, ingredients, weight…). */
+  attributes: Array<{ name: string; value: string }>;
+  /** Purchasable variants (sizes/colors). */
+  variants: Array<{ name: string; price?: string | null; sku?: string | null; available?: boolean | null; image_url?: string | null }>;
+  /** Aggregate rating 0-5 when present. */
+  rating: number | null;
+  /** Number of reviews when present. */
+  review_count: number | null;
+}
+
+export interface Brand {
+  id: string;
+  object: 'brand';
+  name: string;
+  tagline: string | null;
+  description: string | null;
+  website_url: string;
+  logo_url: string | null;
+  icon_url: string | null;
+  colors: BrandColor[];
+  fonts: BrandFont[];
+  voice: BrandVoice | null;
+  style: string | null;
+  default_language: string | null;
+  default_country: string | null;
+  screenshots: Array<{ kind: 'desktop' | 'desktop_full' | 'mobile'; url: string }>;
+  image_urls: string[];
+  status: 'ingesting' | 'ready' | 'failed';
+  products?: BrandProduct[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CreateElementOptions {
   /** Human-friendly name, e.g. `Red Bottle`. Also the in-prompt phrase ("the Red Bottle") when the @handle resolves. */
   name: string;
@@ -803,6 +881,100 @@ export interface ExplainerCostEstimate {
 export interface ExplainerStyle {
   id: string;
   label: string;
+}
+
+/** One section of a song (verse/chorus/bridge…), used to pace the video. */
+export interface MusicVideoSongSection {
+  label: string;
+  start_sec: number;
+  end_sec: number;
+}
+
+/** One word timing, for karaoke-style lyric captions. */
+export interface MusicVideoWordTimestamp {
+  word: string;
+  start_sec: number;
+  end_sec: number;
+}
+
+/** Inline song generation: GenFire produces the track (ElevenLabs music_v2)
+ *  before rendering the video. Billed as its own step. */
+export interface MusicVideoInlineSong {
+  /** What the track should sound like (genre, mood, instrumentation, vocals). */
+  prompt: string;
+  /** Track length in milliseconds (10000–600000). */
+  duration_ms: number;
+  /** Generate an instrumental (no vocals). */
+  instrumental?: boolean;
+}
+
+export interface CreateMusicVideoRequest {
+  /** Creative concept / narrative direction for the video. Steers the shot-list
+   *  and styling. Required. */
+  concept: string;
+  /** https URL of a bring-your-own song. Provide THIS or an inline `song`. */
+  song_url?: string;
+  /** Inline song generation (instead of `song_url`) — GenFire generates and
+   *  bills the track first, then renders the video. */
+  song?: MusicVideoInlineSong;
+  /** Title for a bring-your-own `song_url` track. */
+  song_title?: string;
+  /** Full lyrics for a bring-your-own track (improves lyric-aware pacing/captions). */
+  song_lyrics?: string;
+  /** Pre-computed sections for a bring-your-own track (skips analysis). */
+  song_sections?: MusicVideoSongSection[];
+  /** Word timings for karaoke captions on a bring-your-own track. */
+  song_word_timestamps?: MusicVideoWordTimestamp[];
+  /** Only for a bring-your-own `song_url` track: transcribe it to derive lyrics
+   *  + word timestamps (required for `lyric_captions` on uploaded songs). Runs
+   *  as its own step, billed per second. No-op when `song_word_timestamps` were
+   *  supplied or an inline `song` is used; skip for instrumentals. Default false. */
+  transcribe_lyrics?: boolean;
+  /** Visual style id — see {@link GenFireClient.listMusicVideoStyles}. Required. */
+  style_preset_id: string;
+  /** '9:16' (default) or '16:9'. */
+  aspect_ratio?: '9:16' | '16:9';
+  /** Scenes per second of song: 'low' (~10s/scene) | 'medium' (~7s, default) |
+   *  'high' (~5s). More scenes = more clips = higher cost. */
+  scene_density?: 'low' | 'medium' | 'high';
+  /** Burn karaoke-style lyric captions. Default false. */
+  lyric_captions?: boolean;
+  /** Up to 8 https image URLs (characters/products/looks) that should appear. */
+  reference_images?: Array<{ url: string; label?: string }>;
+  /** Bind a trained influencer's identity so the SAME character appears across
+   *  scenes. Pass the `id` from {@link GenFireClient.listInfluencers}. Its
+   *  conditioning photos are baked into the style anchor and re-anchored on each
+   *  character scene (identity comes from the photos, never appearance text).
+   *  Combinable with `reference_images`. */
+  influencer_id?: string;
+}
+
+export interface EstimateMusicVideoCostRequest {
+  /** Length of the song in seconds (the dominant cost driver). Required. */
+  song_duration_sec: number;
+  /** '9:16' (default) or '16:9'. */
+  aspect_ratio?: '9:16' | '16:9';
+  /** 'low' | 'medium' (default) | 'high'. */
+  scene_density?: 'low' | 'medium' | 'high';
+  /** Whether karaoke lyric captions are burned in. */
+  lyric_captions?: boolean;
+}
+
+export interface MusicVideoCostEstimate {
+  object: 'music_video_cost_estimate';
+  /** Total credits for the video-production stage (song cost NOT included). */
+  totalCredits: number;
+  /** Number of scenes the song is cut into. */
+  sceneCount: number;
+  /** Per-line cost breakdown (anchor frame + AI clips). */
+  breakdown: Array<{ label: string; credits: number }>;
+}
+
+/** A music-video visual style preset, accepted as `style_preset_id`. */
+export interface MusicVideoStyle {
+  id: string;
+  name: string;
+  description: string;
 }
 
 export interface CreateSoundEffectRequest {
@@ -1230,6 +1402,63 @@ export class GenFireClient {
     });
   }
 
+  /**
+   * Ingest a website URL into a brand profile (logo, colors, fonts, structured
+   * voice, screenshots, scraped products). Free — no credits are charged.
+   * Asynchronous: returns a queued run; poll `getRun()` (typically 30–90s) and
+   * read `output.brand_id` from the completed run, then call `getBrand()`.
+   */
+  createBrandFromUrl(url: string, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/brands/ingestions', {
+      body: { url },
+      idempotencyKey: options.idempotencyKey ?? `brand_ingest_${Date.now()}`,
+      signal: options.signal
+    });
+  }
+
+  /** List your stored brand profiles. */
+  listBrands(signal?: AbortSignal): Promise<ListResponse<Brand>> {
+    return this.request<ListResponse<Brand>>('GET', '/brands', { signal });
+  }
+
+  /** Get a full brand profile (including its scraped products). */
+  getBrand(brandId: string, signal?: AbortSignal): Promise<Brand> {
+    return this.request<Brand>('GET', `/brands/${encodeURIComponent(brandId)}`, { signal });
+  }
+
+  /** Edit brand fields (name, tagline, description, colors, voice, style, …). */
+  updateBrand(brandId: string, fields: Partial<Pick<Brand, 'name' | 'tagline' | 'description' | 'style' | 'logo_url' | 'icon_url' | 'colors' | 'fonts' | 'voice' | 'default_language' | 'default_country' | 'image_urls'>>, signal?: AbortSignal): Promise<Brand> {
+    return this.request<Brand>('PATCH', `/brands/${encodeURIComponent(brandId)}`, { body: fields, signal });
+  }
+
+  async deleteBrand(brandId: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<void> {
+    await this.request<void>('DELETE', `/brands/${encodeURIComponent(brandId)}`, {
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Add a product to a brand. Pass `{ url }` to scrape a product page (auto-pulls
+   * name/price/description/images), or manual fields `{ name, price?, description?,
+   * images?, source_url?, usps? }`. Products become real generation references,
+   * so on-brand generation (brand_id) features the actual product.
+   */
+  addBrandProduct(
+    brandId: string,
+    product: { url: string } | { name: string; price?: string; description?: string; images?: string[]; source_url?: string; usps?: string[] },
+    signal?: AbortSignal,
+  ): Promise<BrandProduct> {
+    return this.request<BrandProduct>('POST', `/brands/${encodeURIComponent(brandId)}/products`, { body: product, signal });
+  }
+
+  async deleteBrandProduct(brandId: string, productId: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<void> {
+    await this.request<void>('DELETE', `/brands/${encodeURIComponent(brandId)}/products/${encodeURIComponent(productId)}`, {
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
   listRuns(params: ListRunsParams = {}, signal?: AbortSignal): Promise<ListResponse<Run>> {
     return this.request<ListResponse<Run>>('GET', '/runs', {
       query: {
@@ -1600,6 +1829,37 @@ export class GenFireClient {
   /** List explainer visual style presets accepted as `style_id`. */
   async listExplainerStyles(signal?: AbortSignal): Promise<ExplainerStyle[]> {
     const response = await this.request<ListResponse<ExplainerStyle>>('GET', '/explainers/styles', { signal });
+    return response.data;
+  }
+
+  /**
+   * Generate an auto-directed AI music video from a song (song → beat/section
+   * analysis → style-locked anchor frame → per-scene video clips cut to the
+   * music → composed video with optional lyric captions). 9:16 or 16:9. Bring
+   * your own track via `song_url`, or pass an inline `song` prompt and GenFire
+   * generates (and separately bills) the track first. Async — returns a Run in
+   * `processing`; poll it with {@link waitForRun} (long render — pass a large
+   * `timeoutMs`). The completed `run.output` is `{ reel_id, video_url, script,
+   * scenes, duration_seconds }`.
+   */
+  createMusicVideo(input: CreateMusicVideoRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/music-videos/generations', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Per-config credit estimate for a music video's video-production stage,
+   *  without generating (the song's own cost is not included). */
+  estimateMusicVideoCost(input: EstimateMusicVideoCostRequest, signal?: AbortSignal): Promise<MusicVideoCostEstimate> {
+    return this.request<MusicVideoCostEstimate>('POST', '/music-videos/estimate-cost', { body: input, signal });
+  }
+
+  /** List music-video visual style presets accepted as `style_preset_id`. */
+  async listMusicVideoStyles(signal?: AbortSignal): Promise<MusicVideoStyle[]> {
+    const response = await this.request<ListResponse<MusicVideoStyle>>('GET', '/music-videos/styles', { signal });
     return response.data;
   }
 
