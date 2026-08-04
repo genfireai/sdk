@@ -587,6 +587,21 @@ export interface CreateVideoGenerationRequest {
   /** Output resolution (e.g. '480p', '720p', '1080p', '4k'). Supported values and pricing are per-model — see `resolutions` in the model's `limits` from `listModels()`. Higher resolutions cost more credits. */
   resolution?: string;
   image_url?: string;
+  /** Up to 9 reference images for reference-to-video mode, cited in the prompt as `Image 1`, `Image 2`, … */
+  reference_image_urls?: string[];
+  /**
+   * Hailuo 03 only (`video.hailuo_03`). Up to 3 reference clips, 2–15s each,
+   * cited in the prompt as `Video 1`, `Video 2`, `Video 3`.
+   */
+  reference_video_urls?: string[];
+  /**
+   * Hailuo 03 only (`video.hailuo_03`). Up to 3 reference audio clips, 2–15s
+   * each, cited in the prompt as `Audio 1`, `Audio 2`, `Audio 3`. This is how an
+   * on-camera character gets a consistent voice — e.g. "the woman in Image 1
+   * speaks with the voice in Audio 1". Cannot be the only reference: pair it
+   * with at least one reference image or video.
+   */
+  reference_audio_urls?: string[];
   generate_audio?: boolean;
   /** Output encoding bitrate for Seedance 2.0: 'standard' or 'high'. 'high' requests a larger, higher-quality encode at no extra credit cost. */
   bitrate_mode?: 'standard' | 'high';
