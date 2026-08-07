@@ -587,6 +587,14 @@ export interface CreateVideoGenerationRequest {
   /** Output resolution (e.g. '480p', '720p', '1080p', '4k'). Supported values and pricing are per-model — see `resolutions` in the model's `limits` from `listModels()`. Higher resolutions cost more credits. */
   resolution?: string;
   image_url?: string;
+  /**
+   * Last frame the clip lands on, paired with `image_url` for image-to-video:
+   * the video interpolates from the start image to this one. Supported by every
+   * model whose `capabilities.endFrame` is true in `listModels()` — the Seedance
+   * (2.0 all tiers, 2.5), Kling V3/O3/2.6, and Hailuo 03 / Hailuo 02 Standard
+   * families. Sending it to another model, or without `image_url`, is a 400.
+   */
+  end_image_url?: string;
   /** Up to 9 reference images for reference-to-video mode, cited in the prompt as `Image 1`, `Image 2`, … */
   reference_image_urls?: string[];
   /**
