@@ -19,6 +19,8 @@ export type GenFireScope =
   | 'workflows:write'
   | 'reels:read'
   | 'reels:write'
+  | 'social:read'
+  | 'social:write'
   | 'uploads:write'
   | 'influencers:read'
   | 'influencers:write'
@@ -1268,6 +1270,319 @@ export async function exchangeCliAuthSession(input: ExchangeCliAuthSessionReques
   return parseResponse<ExchangeCliAuthSessionResponse>(response);
 }
 
+// ── 3D models (Meshy v6) ──────────────────────────────────────────────────────
+
+export type MeshTopology = 'quad' | 'triangle';
+export type MeshModelType = 'standard' | 'lowpoly';
+export type MeshPoseMode = 'a-pose' | 't-pose' | '';
+export type MeshSymmetryMode = 'off' | 'auto' | 'on';
+
+export interface Create3dModelRequest {
+  /** Single source image (https URL). Provide this OR `image_urls`. */
+  image_url?: string;
+  /** 1–4 images of the SAME object from different angles. When more than one is
+   *  given and the model supports it, the multi-image endpoint is used. */
+  image_urls?: string[];
+  /** model_3d_generation alias from {@link GenFireClient.listModels}. Defaults
+   *  to the registry default when omitted. */
+  model?: string;
+  /** Generate textures. Default true. */
+  should_texture?: boolean;
+  /** Physically-based rendering maps. Default false. */
+  enable_pbr?: boolean;
+  /** Produce a rigged skeleton. Default false. */
+  enable_rigging?: boolean;
+  /** Requires `enable_rigging`. Default false. */
+  enable_animation?: boolean;
+  /** Animation library action, 0–696. Requires `enable_animation`. */
+  animation_action_id?: number;
+  /** Real-world height in metres, used to scale a rigged mesh. */
+  rigging_height_meters?: number;
+  topology?: MeshTopology;
+  /** Target triangle/quad count, 100–300000. */
+  target_polycount?: number;
+  model_type?: MeshModelType;
+  should_remesh?: boolean;
+  pose_mode?: MeshPoseMode;
+  symmetry_mode?: MeshSymmetryMode;
+  /** Steers texturing when `should_texture` is on. */
+  texture_prompt?: string;
+}
+
+// ── Upscaling and background removal ──────────────────────────────────────────
+
+export interface UpscaleImageRequest {
+  /** https URL of the image to upscale. Required. */
+  source_image_url: string;
+  /** 2 or 4. Default 2. */
+  scale_factor?: 2 | 4;
+}
+
+export interface UpscaleVideoRequest {
+  /** https URL of the video to upscale. Required. */
+  source_video_url: string;
+  /** 2 or 4. Default 2. */
+  scale_factor?: 2 | 4;
+}
+
+export interface RemoveBackgroundRequest {
+  /** https URL of the image to cut out. Required. */
+  image_url: string;
+}
+
+// ── Documents (Firestation Drive) ─────────────────────────────────────────────
+
+export interface GenFireDocument {
+  id: string;
+  object: 'document';
+  title: string;
+  kind?: string;
+  /** Permanent shareable view URL. */
+  url: string;
+  bytes: number;
+}
+
+export interface CreateDocumentRequest {
+  title?: string;
+  /** e.g. 'document' | 'deck'. */
+  kind?: string;
+  /** The document body as HTML. Long documents compose iteratively: create with
+   *  the first sections, then {@link GenFireClient.appendDocument} per chunk. */
+  html: string;
+  description?: string;
+}
+
+export interface DocumentMutationResult {
+  id: string;
+  object: 'document';
+  url: string;
+  bytes: number;
+}
+
+export interface DocumentEditResult extends DocumentMutationResult {
+  /** How many occurrences of `find` were replaced. */
+  occurrences: number;
+}
+
+// ── Skills ────────────────────────────────────────────────────────────────────
+
+export interface SkillFile {
+  path: string;
+  content: string;
+}
+
+export interface Skill {
+  id: string;
+  object: 'skill';
+  title: string;
+  slug: string | null;
+  description: string | null;
+  category: string | null;
+  version: string | null;
+  content: string | null;
+  files: SkillFile[];
+  prompt: string | null;
+  source: string | null;
+  is_public: boolean;
+  /** Marketplace listings only. */
+  installs?: number;
+  owner_name?: string;
+}
+
+export interface CreateSkillRequest {
+  /** Max 80 chars. Required. */
+  title: string;
+  /** Defaults to a slugified `title`. */
+  slug?: string;
+  /** Max 300 chars. */
+  description?: string;
+  /** Max 40 chars. */
+  category?: string;
+  /** The SKILL.md markdown body. Provide this or `prompt`. */
+  content?: string;
+  files?: SkillFile[];
+  /** Default '1.0.0'. */
+  version?: string;
+  /** Alternative to `content` for prompt-only skills. */
+  prompt?: string;
+  /** Publish to the marketplace immediately after saving. */
+  publish?: boolean;
+}
+
+export interface SkillVisibility {
+  id: string;
+  object: 'skill';
+  is_public: boolean;
+}
+
+// ── Apps and websites (app builder) ───────────────────────────────────────────
+
+export type AppKind = 'app' | 'website';
+
+export interface CreateAppGenerationRequest {
+  /** What to build. Required. */
+  prompt: string;
+  /** Pass an existing app id to ITERATE on it instead of creating a new one. */
+  app_id?: string;
+  /** 'app' (default) or 'website'. */
+  kind?: AppKind;
+  /** Spend more tokens for a higher-fidelity build. */
+  high_quality?: boolean;
+  /** Authoring model override. */
+  model?: string;
+  /** Up to 16 https asset URLs the build may reference. */
+  asset_urls?: string[];
+}
+
+export interface DeployAppRequest {
+  /** One complete <!DOCTYPE html> document — the whole app in a single file.
+   *  Must be ≤ 1.5MB and end with </html>. Required. */
+  html: string;
+  title?: string;
+  /** Short description of what was built (max 2000 chars). */
+  brief?: string;
+  kind?: AppKind;
+  /** Redeploy over an existing app id. */
+  app_id?: string;
+}
+
+export interface AppVisibility {
+  id: string;
+  is_public: boolean;
+}
+
+// ── Social publishing ─────────────────────────────────────────────────────────
+
+export interface SocialAccount {
+  platform: string;
+  account_id: string;
+  username: string | null;
+  avatar_url: string | null;
+  publish_enabled: boolean;
+  /** Stable ref to pass in `targets`, e.g. "tiktok:12345". */
+  target: string;
+}
+
+export interface SocialAccountsResponse {
+  object: 'list';
+  data: SocialAccount[];
+  /** Send the user here to connect more accounts via OAuth. */
+  connect_url: string;
+}
+
+export interface CreateSocialPostRequest {
+  /** Where to publish — refs from {@link GenFireClient.listSocialAccounts}
+   *  (`target`), e.g. ["tiktok:123"]. At least one required. */
+  targets: string[];
+  /** Publish an existing faceless reel. Provide exactly one source: `reel_id`,
+   *  `video_url`, `image_urls`, or (LinkedIn/Facebook text posts) `caption`. */
+  reel_id?: string;
+  video_url?: string;
+  image_urls?: string[];
+  /** Single-image convenience alias for `image_urls`. */
+  image_url?: string;
+  caption?: string;
+  /** YouTube video title. */
+  title?: string;
+  label?: string;
+  /** Platform privacy value, e.g. 'public'. */
+  privacy?: string;
+  /** Epoch ms or an ISO timestamp. Omit to publish now. */
+  scheduled_at?: number | string;
+  /** IANA zone for `scheduled_at`. Default 'UTC'. */
+  timezone?: string;
+}
+
+export interface SocialPost {
+  id: string;
+  status: string;
+  /** Echoed back as "platform:account_id" refs. */
+  targets: string[];
+  scheduled_at_ms: number;
+}
+
+export interface SocialLookupResponse {
+  data: unknown;
+}
+
+// ── Ad research ───────────────────────────────────────────────────────────────
+
+export type AdPlatform = 'meta' | 'google' | 'linkedin' | 'reddit';
+
+export interface SearchAdsParams {
+  /** Brand/company name or niche phrase. Provide this or `page_id`. */
+  query?: string;
+  /** Meta page id (brand mode only). */
+  page_id?: string;
+  /** Default 'meta'. */
+  platform?: AdPlatform;
+  /** 'brand' (default) searches one advertiser; 'niche' searches a category. */
+  mode?: 'brand' | 'niche';
+  /** 1–50. Default 20. */
+  limit?: number;
+  /** Opaque page cursor from a previous response's `next_cursor`. */
+  cursor?: string;
+}
+
+export interface SearchAdsResponse {
+  object: 'list';
+  company: Record<string, unknown> | null;
+  data: Array<Record<string, unknown>>;
+  next_cursor: string | null;
+  note?: string;
+}
+
+export interface AnalyzeAdRequest {
+  /** Both from a {@link GenFireClient.searchAds} result. Required. */
+  page_id: string;
+  ad_id: string;
+}
+
+export interface AdResearch {
+  research_id: string;
+  ad: Record<string, unknown>;
+  analysis: Record<string, unknown>;
+  mirrored_video_url: string | null;
+  note?: string;
+}
+
+// ── Usage ─────────────────────────────────────────────────────────────────────
+
+export type UsageGroupBy = 'model' | 'capability' | 'day' | 'none';
+
+export interface UsageBreakdownEntry {
+  group: string;
+  credits_spent: number;
+  runs_count: number;
+  successful_runs: number;
+  failed_runs: number;
+  avg_credits_per_run: number;
+}
+
+export interface UsageSummary {
+  object: 'usage_summary';
+  period: { start: string; end: string };
+  group_by: UsageGroupBy;
+  totals: {
+    credits_spent: number;
+    runs_count: number;
+    successful_runs: number;
+    failed_runs: number;
+  };
+  breakdown: UsageBreakdownEntry[];
+}
+
+export interface GetUsageParams {
+  /** ISO date. Defaults to 30 days ago. */
+  start_date?: string;
+  /** ISO date. Defaults to now. */
+  end_date?: string;
+  /** Default 'model'. */
+  group_by?: UsageGroupBy;
+  /** Restrict to one capability, e.g. 'video_generation'. */
+  capability?: string;
+}
+
 export class GenFireClient {
   readonly baseUrl: string;
   private readonly token: string;
@@ -1928,6 +2243,288 @@ export class GenFireClient {
     await this.request<void>('DELETE', `/webhooks/${encodeURIComponent(endpointId)}`, {
       signal: options.signal,
       headers: options.headers
+    });
+  }
+
+  // ── 3D models ───────────────────────────────────────────────────────────────
+
+  /**
+   * Generate a 3D mesh from one image, or from 1–4 images of the same object
+   * shot from different angles (multi-image-to-3D, when the model supports it).
+   *
+   * **Asynchronous and billable.** Returns a queued {@link Run}; poll
+   * {@link getRun} until `status` is `completed`. The output exposes `model_url`
+   * (GLB), `model_urls` (all formats), plus texture/thumbnail/seed. Rigging,
+   * animation, and PBR add cost — price the exact config with
+   * {@link estimateCost} first.
+   */
+  create3dModelGeneration(input: Create3dModelRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/models/3d/generations', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Upscaling and background removal ────────────────────────────────────────
+
+  /**
+   * Upscale an image 2× or 4× (Topaz). **Billable**; returns a completed
+   * {@link Run} synchronously in the common case.
+   */
+  upscaleImage(input: UpscaleImageRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/images/upscale', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Upscale a video 2× or 4×. **Billable** and slow — poll {@link getRun}.
+   */
+  upscaleVideo(input: UpscaleVideoRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/videos/upscale', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Cut the background out of an image (BRIA). **Billable.** The model is fixed
+   * — there is no model choice for this operation.
+   */
+  removeBackground(input: RemoveBackgroundRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/images/background-remove', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Documents ───────────────────────────────────────────────────────────────
+
+  /** List the HTML documents in the account's Drive. Free. */
+  listDocuments(signal?: AbortSignal): Promise<ListResponse<GenFireDocument>> {
+    return this.request<ListResponse<GenFireDocument>>('GET', '/documents', { signal });
+  }
+
+  /**
+   * Author an HTML document (report, page, deck) into the account's Drive and
+   * get back a permanent shareable URL. Free. For long documents, create with
+   * the opening sections then {@link appendDocument} the rest in chunks.
+   */
+  createDocument(input: CreateDocumentRequest, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<GenFireDocument> {
+    return this.request<GenFireDocument>('POST', '/documents', {
+      body: input,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Append HTML to the end of an existing document. Free. */
+  appendDocument(documentId: string, html: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<DocumentMutationResult> {
+    return this.request<DocumentMutationResult>('POST', `/documents/${encodeURIComponent(documentId)}/append`, {
+      body: { html },
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Find-and-replace inside a document. Returns the number of `occurrences`
+   * replaced — 0 means the `find` string was not present. Free.
+   */
+  editDocument(documentId: string, find: string, replace: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<DocumentEditResult> {
+    return this.request<DocumentEditResult>('POST', `/documents/${encodeURIComponent(documentId)}/edit`, {
+      body: { find, replace },
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Skills ──────────────────────────────────────────────────────────────────
+
+  /** List the skills installed in this account. Free. */
+  listSkills(signal?: AbortSignal): Promise<ListResponse<Skill>> {
+    return this.request<ListResponse<Skill>>('GET', '/skills', { signal });
+  }
+
+  /** Browse published marketplace skills (up to 60). Free. */
+  listSkillMarket(signal?: AbortSignal): Promise<ListResponse<Skill>> {
+    return this.request<ListResponse<Skill>>('GET', '/skills/market', { signal });
+  }
+
+  /** Save a skill to the account, optionally publishing it at the same time. Free. */
+  createSkill(input: CreateSkillRequest, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<Skill> {
+    return this.request<Skill>('POST', '/skills', {
+      body: input,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Publish (or, with `publish: false`, unpublish) one of your skills. Free. */
+  publishSkill(skillId: string, publish = true, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<SkillVisibility> {
+    return this.request<SkillVisibility>('POST', `/skills/${encodeURIComponent(skillId)}/publish`, {
+      body: { publish },
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Install a published marketplace skill into this account. Free. */
+  installSkill(publishedId: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<Skill> {
+    return this.request<Skill>('POST', `/skills/market/${encodeURIComponent(publishedId)}/install`, {
+      body: {},
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Apps and websites ───────────────────────────────────────────────────────
+
+  /**
+   * Build an app or website from a prompt. **Asynchronous and billable** —
+   * returns a queued {@link Run}; poll {@link getRun} for `app_id` and
+   * `live_url`. Pass `app_id` to iterate on an existing build instead of
+   * starting a new one.
+   */
+  createAppGeneration(input: CreateAppGenerationRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/apps/generations', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Deploy HTML you already have — skips generation entirely and hosts the
+   * document at a permanent URL. The document is smoke-booted first: a page
+   * that throws on load is rejected with `boot_failed` rather than deployed,
+   * so retry with a NEW idempotency key after fixing the code.
+   */
+  deployApp(input: DeployAppRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/apps/deployments', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Publish (or, with `publish: false`, unpublish) a completed app. Free. */
+  publishApp(appId: string, publish = true, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<AppVisibility> {
+    return this.request<AppVisibility>('POST', `/apps/${encodeURIComponent(appId)}/publish`, {
+      body: { publish },
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Social publishing ───────────────────────────────────────────────────────
+
+  /**
+   * List connected social accounts. Each entry carries a `target` ref to pass
+   * to {@link createSocialPost}. When the list is empty, send the user to
+   * `connect_url` to link accounts via OAuth. Free.
+   */
+  listSocialAccounts(signal?: AbortSignal): Promise<SocialAccountsResponse> {
+    return this.request<SocialAccountsResponse>('GET', '/social/accounts', { signal });
+  }
+
+  /**
+   * Publish or schedule a post to one or more connected accounts. Free (the
+   * media it publishes was billed when generated). Omit `scheduled_at` to
+   * publish immediately.
+   */
+  createSocialPost(input: CreateSocialPostRequest, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<SocialPost> {
+    return this.request<SocialPost>('POST', '/social/posts', {
+      body: input,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Read-only access to the allowlisted ScrapeCreators catalog (profiles, posts,
+   * transcripts, trends, searches across 27+ platforms). Free.
+   *
+   * @param path A documented ScrapeCreators path, e.g. '/v1/tiktok/profile'.
+   * @param params Extra query parameters forwarded to the upstream endpoint.
+   */
+  socialLookup(
+    path: string,
+    params: Record<string, string | number | undefined | null> = {},
+    signal?: AbortSignal
+  ): Promise<SocialLookupResponse> {
+    return this.request<SocialLookupResponse>('GET', '/social/lookup', {
+      query: { path, ...params },
+      signal
+    });
+  }
+
+  // ── Ad research ─────────────────────────────────────────────────────────────
+
+  /**
+   * Search competitor ad libraries. `days_running` on each result is the
+   * performance proxy — 45+ days means the ad is proven. Page with
+   * `cursor: <next_cursor>`. Free.
+   */
+  searchAds(params: SearchAdsParams, signal?: AbortSignal): Promise<SearchAdsResponse> {
+    return this.request<SearchAdsResponse>('GET', '/ads/search', {
+      query: {
+        query: params.query,
+        page_id: params.page_id,
+        platform: params.platform,
+        mode: params.mode,
+        limit: params.limit,
+        cursor: params.cursor
+      },
+      signal
+    });
+  }
+
+  /**
+   * Analyze one ad from a {@link searchAds} result and store the reusable
+   * format. Pass the returned `research_id` as `reference_ad_research_id` to the
+   * `ugc_ad_video` workflow to clone the STRUCTURE for your own product —
+   * wording and assets are never copied.
+   */
+  analyzeAd(input: AnalyzeAdRequest, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<AdResearch> {
+    return this.request<AdResearch>('POST', '/ads/analyze', {
+      body: input,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Re-read a stored ad analysis by its `research_id`. Free. */
+  getAdResearch(researchId: string, signal?: AbortSignal): Promise<AdResearch> {
+    return this.request<AdResearch>('GET', `/ads/research/${encodeURIComponent(researchId)}`, { signal });
+  }
+
+  // ── Usage ───────────────────────────────────────────────────────────────────
+
+  /**
+   * Credit spend and run counts over a date range, grouped by model (default),
+   * capability, or day. Defaults to the last 30 days. Free.
+   */
+  getUsage(params: GetUsageParams = {}, signal?: AbortSignal): Promise<UsageSummary> {
+    return this.request<UsageSummary>('GET', '/usage', {
+      query: {
+        start_date: params.start_date,
+        end_date: params.end_date,
+        group_by: params.group_by,
+        capability: params.capability
+      },
+      signal
     });
   }
 }
