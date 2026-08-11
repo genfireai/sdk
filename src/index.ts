@@ -372,9 +372,20 @@ export interface CreateImageGenerationRequest {
    * Grok uses at most the first 3. Routes through the model's edit variant.
    */
   image_urls?: string[];
-  /** image.gpt_image_2 only. One of: low, medium, high, auto. Defaults to high. */
+  /**
+   * Quality tier. `image.gpt_image_2` accepts low | medium | high | auto and
+   * prices them as a multiplier (low 1x, medium 6x, high 22x).
+   * `image.grok_imagine_2` accepts low | medium ONLY, priced as two separate
+   * base rates. Unset generates (and bills) medium on both.
+   */
   quality?: 'low' | 'medium' | 'high' | 'auto';
-  /** Nano Banana family edit only (image.nano_banana, image.nano_banana_2, image.nano_banana_pro) — request must include image_url or mentions. One of: 1K, 2K, 4K. */
+  /**
+   * Output resolution. `image.grok_imagine_pro` and `image.grok_imagine_2`
+   * accept 1K | 2K on BOTH text-to-image and edit (4K is rejected). The Nano
+   * Banana family (image.nano_banana, image.nano_banana_2,
+   * image.nano_banana_pro) accepts it on the EDIT path only — the request must
+   * include image_url or mentions.
+   */
   resolution?: '1K' | '2K' | '4K';
   /**
    * Optional `[{ handle, influencer_id }]`. When supplied, the model auto-switches
