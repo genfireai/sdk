@@ -578,7 +578,7 @@ export interface CreateGameGenerationRequest {
   prompt: string;
   /** Iterate on an existing game: its `game_id` from a prior generation. Re-generates in place at the same `play_url`. */
   game_id?: string;
-  /** Codegen model alias (e.g. `claude-opus-4-8`). Defaults to Opus. */
+  /** Codegen model alias (e.g. `claude-opus-5`). Defaults to Opus. */
   model?: string;
   /** Up to 16 asset URLs (images / GLB / audio) to wire into the game. */
   asset_urls?: string[];
@@ -1281,7 +1281,7 @@ export async function exchangeCliAuthSession(input: ExchangeCliAuthSessionReques
   return parseResponse<ExchangeCliAuthSessionResponse>(response);
 }
 
-// ── 3D models (Meshy v6) ──────────────────────────────────────────────────────
+// ── 3D models (Meshy v7 default, v6 pinnable) ─────────────────────────────────
 
 export type MeshTopology = 'quad' | 'triangle';
 export type MeshModelType = 'standard' | 'lowpoly';
@@ -1313,6 +1313,9 @@ export interface Create3dModelRequest {
   /** Target triangle/quad count, 100–300000. */
   target_polycount?: number;
   model_type?: MeshModelType;
+  /** Higher-fidelity geometry with finer surface detail. Meshy v7 single-image
+   *  only — silently ignored on v6 or when `image_urls` has more than one entry. */
+  ultra_mode?: boolean;
   should_remesh?: boolean;
   pose_mode?: MeshPoseMode;
   symmetry_mode?: MeshSymmetryMode;
