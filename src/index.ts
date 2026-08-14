@@ -679,7 +679,11 @@ export interface CreateMusicRequest {
    */
   composition_plan?: Record<string, unknown>;
   model?: string;
-  /** Desired length in seconds, 3–600. ElevenLabs prompt mode only. */
+  /**
+   * Desired length in seconds. ElevenLabs prompt mode: 3–600 (default 30).
+   * MiniMax Music 3: an upper BOUND of 1–300 (default 60) that billing is
+   * charged on — the track may come in shorter. Lyria 3 Pro ignores it.
+   */
   duration_seconds?: number;
   include_details?: boolean;
   with_timestamps?: boolean;
@@ -687,13 +691,28 @@ export interface CreateMusicRequest {
   force_instrumental?: boolean;
   /** With a music_v1 composition_plan: enforce section durations exactly. */
   respect_sections_durations?: boolean;
-  /** Random seed for more consistent results. ElevenLabs composition_plan mode only. */
+  /**
+   * Random seed for reproducible results — ElevenLabs composition_plan mode,
+   * or MiniMax Music 3 (which returns the seed it used in the run output).
+   */
   seed?: number;
   output_format?: string;
   /** Image URL used as inspiration for the generated music. Lyria 3 Pro only. */
   image_url?: string;
   /** Description of what to exclude from the generated audio. Lyria 3 Pro only. */
   negative_prompt?: string;
+  /**
+   * The lyrics to sing. REQUIRED for music.minimax_music_3 — that model writes
+   * none of its own. Structure tags ([intro], [verse], [pre-chorus], [chorus],
+   * [post-chorus], [bridge], [instrumental], [solo], [outro]) must each be on
+   * their own line; GenFire re-splits a tag sharing a line with lyric text so
+   * nothing is silently dropped. Ignored by ElevenLabs and Lyria 3 Pro.
+   */
+  lyrics?: string;
+  /** Flow-matching Euler steps per 8s chunk, 1–100 (default 30). MiniMax Music 3 only. */
+  num_inference_steps?: number;
+  /** Classifier-free guidance scale, 0–20 (default 1.7). MiniMax Music 3 only. */
+  guidance_scale?: number;
 }
 
 /** Background-music config for a faceless reel. */
