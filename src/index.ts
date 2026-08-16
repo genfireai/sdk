@@ -27,7 +27,8 @@ export type GenFireScope =
   | 'elements:read'
   | 'elements:write'
   | 'brands:read'
-  | 'brands:write';
+  | 'brands:write'
+  | 'moodboards:read';
 
 export type RunStatus = 'queued' | 'processing' | 'completed' | 'failed';
 export type BatchStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'partial';
@@ -393,6 +394,27 @@ export interface CreateImageGenerationRequest {
    * conditioning. Currently a single mention per request is supported.
    */
   mentions?: InfluencerMention[];
+  /**
+   * Optional brand id (`GET /v1/brands`). Grounds the generation server-side:
+   * the brand's product images are attached as references and its
+   * colors/style/voice are prepended to the prompt. Composes with
+   * `moodboard_id` — brand identity leads, moodboard aesthetic follows.
+   */
+  brand_id?: string;
+  /**
+   * Optional moodboard id (`GET /v1/moodboards`, or a board shared with you).
+   * Styles the generation server-side: the board's composed style fragment is
+   * prepended to the prompt and its exemplar images attached as edit sources.
+   * Requires the `moodboards:read` scope in addition to `images:write`.
+   */
+  moodboard_id?: string;
+  /**
+   * How hard the moodboard steers (only meaningful with `moodboard_id`):
+   * `subtle` = style text only, `balanced` (default) = text + up to 3
+   * exemplar refs, `strong` = text + as many exemplars as fit under the
+   * 14-image cap.
+   */
+  moodboard_strength?: 'subtle' | 'balanced' | 'strong';
 }
 
 export type InfluencerStatus = 'draft' | 'ready' | 'archived';
