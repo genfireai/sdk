@@ -56,7 +56,22 @@ export interface RequestOptions {
 export interface ListRunsParams {
   status?: RunStatus;
   capability?: string;
+  /** Max rows to RETURN (1-100). Does not bound how far back `q` searches. */
   limit?: number;
+  /**
+   * Keyword search over the account's ENTIRE run history — matched server-side
+   * against each run's prompt, topic, title, model and capability. All words
+   * must match. This is how to find old work; `limit` never widens it.
+   */
+  q?: string;
+  /** Continue from a previous page: pass its `next_cursor`, same filters. */
+  starting_after?: string;
+  /** ISO date (or ms epoch) lower bound on createdAt. */
+  created_after?: string;
+  /** ISO date (or ms epoch) upper bound on createdAt. */
+  created_before?: string;
+  /** Cap on how many records a keyword search may read (default 5000). */
+  max_scan?: number;
 }
 
 export interface ListBatchesParams {
@@ -353,6 +368,15 @@ export interface WebhookDelivery {
 export interface ListResponse<T> {
   object: 'list';
   data: T[];
+  /** More rows exist below `next_cursor` (run listings). */
+  has_more?: boolean;
+  /** Pass as `starting_after` to continue exactly where this page stopped. */
+  next_cursor?: string | null;
+  /** Run search: everything newer than this instant was examined. Null means
+   *  the search reached the account's first generation. */
+  scanned_through?: string | null;
+  /** Run search: the keyword was matched server-side, across full history. */
+  search_applied?: boolean;
 }
 
 export interface InfluencerMention {
@@ -1857,7 +1881,12 @@ export class GenFireClient {
       query: {
         status: params.status,
         capability: params.capability,
-        limit: params.limit
+        limit: params.limit,
+        q: params.q,
+        starting_after: params.starting_after,
+        created_after: params.created_after,
+        created_before: params.created_before,
+        max_scan: params.max_scan
       },
       signal
     });
