@@ -1,6 +1,6 @@
-# GenFire TypeScript SDK
+# Genfire TypeScript SDK
 
-Typed fetch-based client for the GenFire Public API.
+Typed fetch-based client for the Genfire Public API.
 
 ## Install
 

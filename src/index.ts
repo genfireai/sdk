@@ -121,7 +121,7 @@ export class GenFireApiError extends Error {
   constructor(payload: ApiErrorPayload | Record<string, unknown>, fallbackStatus: number) {
     const detail = typeof (payload as ApiErrorPayload).detail === 'string'
       ? (payload as ApiErrorPayload).detail
-      : `GenFire API request failed with status ${fallbackStatus}`;
+      : `Genfire API request failed with status ${fallbackStatus}`;
     super(detail);
     this.name = 'GenFireApiError';
     this.status = typeof (payload as ApiErrorPayload).status === 'number'
@@ -628,7 +628,7 @@ export interface CreateGameGenerationRequest {
   model?: string;
   /** Up to 16 asset URLs (images / GLB / audio) to wire into the game. */
   asset_urls?: string[];
-  /** Build with realtime multiplayer via the GenFire relay. */
+  /** Build with realtime multiplayer via the Genfire relay. */
   multiplayer?: boolean;
 }
 
@@ -751,7 +751,7 @@ export interface CreateMusicRequest {
    * The lyrics to sing. REQUIRED for music.minimax_music_3 — that model writes
    * none of its own. Structure tags ([intro], [verse], [pre-chorus], [chorus],
    * [post-chorus], [bridge], [instrumental], [solo], [outro]) must each be on
-   * their own line; GenFire re-splits a tag sharing a line with lyric text so
+   * their own line; Genfire re-splits a tag sharing a line with lyric text so
    * nothing is silently dropped. Ignored by ElevenLabs and Lyria 3 Pro.
    */
   lyrics?: string;
@@ -905,8 +905,8 @@ export interface ExplainerScriptBeat {
 }
 
 /** A complete agent-authored explainer script (cast + 3–100 ordered beats).
- *  Passing one bypasses GenFire's internal LLM entirely — you author the whole
- *  creative contract and GenFire is pure rendering. */
+ *  Passing one bypasses Genfire's internal LLM entirely — you author the whole
+ *  creative contract and Genfire is pure rendering. */
 export interface ExplainerScript {
   /** Recurring characters (up to 3). */
   cast?: ExplainerScriptCastMember[];
@@ -917,12 +917,12 @@ export interface ExplainerScript {
 export interface CreateExplainerRequest {
   /** What the explainer is about. Required even alongside a script (titling/metadata). */
   topic: string;
-  /** Structured agent-authored script. When present, GenFire makes ZERO
+  /** Structured agent-authored script. When present, Genfire makes ZERO
    *  internal LLM calls (no script writing, no storyboarding) — it renders
    *  your beats verbatim, and the narration length sets the duration
    *  (`target_duration_sec` is ignored). */
   script?: ExplainerScript;
-  /** Plain-text script narrated verbatim; GenFire still storyboards the visuals. */
+  /** Plain-text script narrated verbatim; Genfire still storyboards the visuals. */
   custom_script?: string;
   /** Visual style id — see {@link GenFireClient.listExplainerStyles}. */
   style_id?: string;
@@ -998,7 +998,7 @@ export interface MusicVideoWordTimestamp {
   end_sec: number;
 }
 
-/** Inline song generation: GenFire produces the track (ElevenLabs music_v2)
+/** Inline song generation: Genfire produces the track (ElevenLabs music_v2)
  *  before rendering the video. Billed as its own step. */
 export interface MusicVideoInlineSong {
   /** What the track should sound like (genre, mood, instrumentation, vocals). */
@@ -1015,7 +1015,7 @@ export interface CreateMusicVideoRequest {
   concept: string;
   /** https URL of a bring-your-own song. Provide THIS or an inline `song`. */
   song_url?: string;
-  /** Inline song generation (instead of `song_url`) — GenFire generates and
+  /** Inline song generation (instead of `song_url`) — Genfire generates and
    *  bills the track first, then renders the video. */
   song?: MusicVideoInlineSong;
   /** Title for a bring-your-own `song_url` track. */
@@ -2114,7 +2114,7 @@ export class GenFireClient {
   }
 
   /**
-   * Publish a completed game you own to the public GenFire games gallery
+   * Publish a completed game you own to the public Genfire games gallery
    * (genfire.ai/games), or unpublish it with `publish: false`. The game's
    * `play_url` is shareable whether or not it is published — this only controls
    * the public marketplace listing.
@@ -2227,7 +2227,7 @@ export class GenFireClient {
   /**
    * Generate an explainer film end-to-end (script → voiceover → style-locked
    * frames → per-scene video clips → composed film). 20s–10min, 16:9 or 9:16.
-   * Pass a structured `script` to author every beat yourself — GenFire then
+   * Pass a structured `script` to author every beat yourself — Genfire then
    * makes zero internal LLM calls and purely renders. Async — returns a Run in
    * `processing`; poll it with {@link waitForRun}. Long films render for a
    * while (up to ~30 minutes for a 10-minute film), so pass a large
@@ -2258,7 +2258,7 @@ export class GenFireClient {
    * Generate an auto-directed AI music video from a song (song → beat/section
    * analysis → style-locked anchor frame → per-scene video clips cut to the
    * music → composed video with optional lyric captions). 9:16 or 16:9. Bring
-   * your own track via `song_url`, or pass an inline `song` prompt and GenFire
+   * your own track via `song_url`, or pass an inline `song` prompt and Genfire
    * generates (and separately bills) the track first. Async — returns a Run in
    * `processing`; poll it with {@link waitForRun} (long render — pass a large
    * `timeoutMs`). The completed `run.output` is `{ reel_id, video_url, script,

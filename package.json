@@ -2,7 +2,7 @@
   "name": "@genfire/sdk",
   "version": "0.20.0",
   "private": false,
-  "description": "TypeScript SDK for the GenFire Public API",
+  "description": "TypeScript SDK for the Genfire Public API",
   "keywords": [
     "genfire",
     "sdk",
@@ -21,7 +21,7 @@
   "bugs": {
     "url": "https://github.com/genfireai/sdk/issues"
   },
-  "author": "GenFire Team",
+  "author": "Genfire Team",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
