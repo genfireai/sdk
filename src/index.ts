@@ -951,6 +951,14 @@ export interface CreateExplainerRequest {
   /** Up to 8 https image URLs (products, characters, brands) that must appear
    *  in the film. Beats reference them by 1-based index via `refs`. */
   reference_images?: Array<{ url: string; label?: string }>;
+  /** How animated scenes join: 'seamless' (default — each clip seeds from the
+   *  previous clip's last frame, reads as continuous footage) or 'cuts' (every
+   *  scene is its own shot, hard cut to hard cut). Stills ignore it. */
+  continuity?: 'seamless' | 'cuts';
+  /** An authored script (`script` / `custom_script`) that re-tells an episode
+   *  this account already rendered is refused with a 409 `duplicate_script`
+   *  naming the match. Pass true to render it anyway (a remake or sequel). */
+  allow_duplicate?: boolean;
 }
 
 export interface EstimateExplainerCostRequest {
@@ -1078,6 +1086,251 @@ export interface MusicVideoStyle {
   id: string;
   name: string;
   description: string;
+}
+
+// ── Picture books (Picture Book Studio) ───────────────────────────────────────
+
+export type PictureBookAgeBand = 'board' | 'picture' | 'early-reader';
+export type PictureBookQuality = 'low' | 'medium';
+export type PictureBookLettering = 'typeset' | 'lettered';
+export type PictureBookStatus = 'draft' | 'generating' | 'ready' | 'failed';
+export type PictureBookExportKind = 'interior-pdf' | 'cover-pdf' | 'ebook-pdf' | 'images-zip';
+
+/** A recurring character: UPPERCASE name + ONE fixed physical description. */
+export interface PictureBookCastInput {
+  name: string;
+  /** Physical appearance only (≤240 chars) — no style words, no personality. */
+  description: string;
+}
+
+/**
+ * A recurring SETTING (the places bible): UPPERCASE name + ONE fixed physical
+ * description — architecture, landmarks, colours, layout. Recurring settings
+ * only (the burrow, the hill); a one-off location stays in the page's visual.
+ */
+export interface PictureBookPlaceInput {
+  name: string;
+  /** Physical look only (≤240 chars): architecture, landmarks, colours, layout — no style words. */
+  description: string;
+}
+
+/** One interior page of an authored plan. */
+export interface PictureBookPlanPageInput {
+  /**
+   * page (art + words, default) | text-page (words only, no art) | spread
+   * (ONE picture across two facing pages — a panorama or the big moment;
+   * at most 1/3 of the pages, never page 1, and it must START on an even page
+   * (2–3, 4–5 …) or the server demotes it to a single page; the words sit on
+   * one half; one render, one page credit).
+   */
+  kind?: 'page' | 'text-page' | 'spread';
+  /** The exact words on the page. */
+  text: string;
+  /** The scene for the art — refer to characters by NAME, never re-describe them. */
+  visual: string;
+  /** Cast NAMES physically in this picture. */
+  cast?: string[];
+  /** The place NAME this page happens in — name it here, do not re-describe it in the visual. */
+  place?: string;
+}
+
+/**
+ * A caller-authored book plan (PREFERRED over idea/script): Genfire renders
+ * exactly these words and runs no planner of its own.
+ */
+export interface PictureBookPlanInput {
+  title: string;
+  premise?: string;
+  synopsis?: string;
+  cast?: PictureBookCastInput[];
+  /** The places bible: up to 4 recurring settings, one reference sheet each. */
+  places?: PictureBookPlaceInput[];
+  /** Interior pages in reading order (4–48); covers are added for you. */
+  pages: PictureBookPlanPageInput[];
+  cover_visual?: string;
+  back_cover_blurb?: string;
+  dedication?: string;
+}
+
+export interface CreatePictureBookRequest {
+  /** PREFERRED: your own complete plan — title, cast bible, every page's text + visual, cover + blurb. */
+  plan?: PictureBookPlanInput;
+  /** Fallback: one-line story premise; Genfire's planner writes the book from it. Provide plan, idea OR script. */
+  idea?: string;
+  /** The full story text, one paragraph per page; the planner splits it into pages. */
+  script?: string;
+  title?: string;
+  /** board (0–3) | picture (3–7, default) | early-reader (5–8) — sets the words-per-page budget. */
+  age_band?: PictureBookAgeBand;
+  /** Interior page count within the age band's options (defaults 12 / 24 / 32). */
+  pages?: number;
+  /** Illustration style id — see {@link GenFireClient.listPictureBookStyles}. Default "storybook". */
+  style_id?: string;
+  /** Format id (KDP trims, a4, digital-* aspects). Default "kdp-8.5x8.5". */
+  format_id?: string;
+  /** GPT Image 2 quality for every unit. Default "low". */
+  quality?: PictureBookQuality;
+  /** typeset (default, words set in post) | lettered (painted into the art). */
+  lettering?: PictureBookLettering;
+  /** Up to 4 recurring characters. Omit to let the planner invent the cast. */
+  cast?: PictureBookCastInput[];
+  /** Bill a workspace credit pool instead of the personal balance. */
+  team_id?: string;
+}
+
+export interface PictureBookCostLine {
+  label: string;
+  unit_key: string;
+  units: number;
+  unit_credits: number;
+  credits: number;
+}
+
+export interface PictureBookCostEstimate {
+  object: 'picture_book_cost_estimate';
+  estimated_credits: number;
+  breakdown: PictureBookCostLine[];
+  current_credits: number | null;
+  affordable: boolean | null;
+  /** What the planner would build — title, page count and cast. */
+  plan: {
+    title: string;
+    premise: string;
+    pages: number;
+    art_pages: number;
+    cast: Array<{ name: string; description: string }>;
+    places?: Array<{ name: string; description: string }>;
+  };
+  config: {
+    age_band: PictureBookAgeBand;
+    pages: number;
+    style_id: string;
+    format_id: string;
+    quality: PictureBookQuality;
+    lettering: PictureBookLettering;
+  };
+}
+
+export interface PictureBookStyle {
+  id: string;
+  label: string;
+  tagline: string;
+  palette: string[];
+  font_id: string;
+  thumbnail_url: string;
+}
+
+export interface PictureBookFormat {
+  id: string;
+  label: string;
+  kind: 'print' | 'digital';
+  group: string;
+  aspect: string;
+  trim_in: { w: number; h: number } | null;
+  note: string | null;
+}
+
+export interface PictureBookAgeBandSpec {
+  id: PictureBookAgeBand;
+  label: string;
+  ages: string;
+  words_per_page: [number, number];
+  page_options: number[];
+  default_pages: number;
+}
+
+export interface PictureBookCatalog {
+  object: 'picture_book_catalog';
+  styles: PictureBookStyle[];
+  formats: PictureBookFormat[];
+  age_bands: PictureBookAgeBandSpec[];
+  qualities: PictureBookQuality[];
+  lettering_modes: PictureBookLettering[];
+  export_kinds: PictureBookExportKind[];
+  defaults: { age_band: PictureBookAgeBand; style_id: string; format_id: string; quality: PictureBookQuality; lettering: PictureBookLettering };
+}
+
+export interface PictureBookPage {
+  id: string;
+  /** spread = one picture across two facing interior pages (two page slots). */
+  kind: 'front-cover' | 'title' | 'page' | 'spread' | 'text-page' | 'back-cover';
+  order: number;
+  /** Reader-facing interior page number(s): "4" or "4–5" for a spread; null on covers. */
+  page_number?: string | null;
+  page_numbers?: number[];
+  text: string;
+  visual: string;
+  cast: string[];
+  /** The place NAME this page happens in (its sheet rides along), or null. */
+  place?: string | null;
+  place_id?: string | null;
+  layout: 'art-full' | 'art-text-split' | 'text-page';
+  has_art: boolean;
+  art_url: string | null;
+  art_status: 'pending' | 'generating' | 'ready' | 'failed';
+  art_error: string | null;
+}
+
+export interface PictureBookCastMember {
+  id: string;
+  name: string;
+  description: string;
+  has_sheet: boolean;
+  sheet_url: string | null;
+  sheet_status: 'none' | 'generating' | 'ready' | 'failed';
+}
+
+/** A recurring setting with its reference sheet (a wide establishing view). */
+export interface PictureBookPlace {
+  id: string;
+  name: string;
+  description: string;
+  has_sheet: boolean;
+  sheet_url: string | null;
+  sheet_status: 'none' | 'generating' | 'ready' | 'failed';
+}
+
+export interface PictureBookExport {
+  id?: string;
+  object?: 'picture_book_export';
+  book_id?: string;
+  kind: PictureBookExportKind;
+  url: string | null;
+  bytes?: number | null;
+  warnings: string[];
+  spec?: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface PictureBook {
+  object: 'picture_book';
+  id: string;
+  title: string;
+  author: string | null;
+  status: PictureBookStatus;
+  age_band: PictureBookAgeBand;
+  quality: PictureBookQuality;
+  lettering: PictureBookLettering;
+  style_id: string | null;
+  format_id: string | null;
+  aspect: string | null;
+  page_count: number;
+  ready_pages: number;
+  /** Stage progress while status is "generating". */
+  progress: RunProgress | null;
+  generation: { stage: string; done: number; total: number; error: string | null } | null;
+  premise: string | null;
+  synopsis: string | null;
+  cast: PictureBookCastMember[];
+  /** The places bible — recurring settings, one reference sheet each. */
+  places?: PictureBookPlace[];
+  pages: PictureBookPage[];
+  exports: Array<{ id: string; kind: PictureBookExportKind; url: string; warnings: string[]; created_at: string }>;
+  credits: { quoted: number; spent: number } | null;
+  /** Studio deep link (path on genfire.ai). */
+  url: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateSoundEffectRequest {
@@ -1402,8 +1655,19 @@ export interface UpscaleImageRequest {
 export interface UpscaleVideoRequest {
   /** https URL of the video to upscale. Required. */
   source_video_url: string;
-  /** 2 or 4. Default 2. */
-  scale_factor?: 2 | 4;
+  /**
+   * Which engine runs the upscale. Topaz (the default) is a classical
+   * super-resolution pass at 2x/4x. Flux is a FLUX 3 diffusion pass at
+   * 1.5x-3x with a precise/creative mode — better detail, several times the
+   * credit cost, and limited to MP4 sources under 20s and 50MB.
+   */
+  model?: 'video_upscale.fal_video_upscaler' | 'video_upscale.flux_video_upscale';
+  /** Topaz: 2 or 4. Flux: any value from 1.5 to 3. Default 2. */
+  scale_factor?: number;
+  /** Flux only. `precise` stays faithful to the source; `creative` (default) adds detail. */
+  mode?: 'precise' | 'creative';
+  /** Flux only, optional. Guides the creative pass. */
+  prompt?: string;
 }
 
 export interface RemoveBackgroundRequest {
@@ -2287,6 +2551,47 @@ export class GenFireClient {
     return response.data;
   }
 
+  // ── Picture books ─────────────────────────────────────────────────────────
+
+  /**
+   * Write and illustrate a complete picture book with a consistent cast from
+   * an `idea` (the free planner writes the text) or your own `script`. Async —
+   * returns a Run in `processing`; poll it with {@link waitForRun} (minutes;
+   * `progress` carries the anchor → sheets → pages → covers stages). The run's
+   * `resource_id` / `output.book_id` is the book id: read it with
+   * {@link getPictureBook} and export files with {@link exportPictureBook}.
+   * The studio link is https://genfire.ai/dashboard/books/{book_id}.
+   */
+  createPictureBook(input: CreatePictureBookRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/picture-books/generations', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Plan + price a picture book without generating it (same input as
+   *  {@link createPictureBook}); returns the planned title/pages/cast too. */
+  estimatePictureBookCost(input: CreatePictureBookRequest, signal?: AbortSignal): Promise<PictureBookCostEstimate> {
+    return this.request<PictureBookCostEstimate>('POST', '/picture-books/estimate-cost', { body: input, signal });
+  }
+
+  /** The Picture Book Studio catalog: styles, formats, age bands, export kinds. */
+  listPictureBookStyles(signal?: AbortSignal): Promise<PictureBookCatalog> {
+    return this.request<PictureBookCatalog>('GET', '/picture-books/styles', { signal });
+  }
+
+  /** One picture book: status, progress, cast, every page (with art URLs), exports. */
+  getPictureBook(bookId: string, signal?: AbortSignal): Promise<PictureBook> {
+    return this.request<PictureBook>('GET', `/picture-books/${encodeURIComponent(bookId)}`, { signal });
+  }
+
+  /** Export a picture book (free): interior-pdf | cover-pdf | ebook-pdf | images-zip. */
+  exportPictureBook(bookId: string, kind: PictureBookExportKind, signal?: AbortSignal): Promise<PictureBookExport> {
+    return this.request<PictureBookExport>('POST', `/picture-books/${encodeURIComponent(bookId)}/export`, { body: { kind }, signal });
+  }
+
   listWebhooks(signal?: AbortSignal): Promise<ListResponse<WebhookEndpoint>> {
     return this.request<ListResponse<WebhookEndpoint>>('GET', '/webhooks', { signal });
   }
@@ -2369,7 +2674,11 @@ export class GenFireClient {
   }
 
   /**
-   * Upscale a video 2× or 4×. **Billable** and slow — poll {@link getRun}.
+   * Upscale a video. **Billable** and slow — poll {@link getRun}.
+   *
+   * Defaults to Topaz at 2×. Pass `model: 'video_upscale.flux_video_upscale'`
+   * for the FLUX 3 engine, which accepts a fractional `scale_factor` from 1.5
+   * to 3, a `mode`, and an optional guiding `prompt`.
    */
   upscaleVideo(input: UpscaleVideoRequest, options: RequestOptions = {}): Promise<Run> {
     return this.request<Run>('POST', '/videos/upscale', {
