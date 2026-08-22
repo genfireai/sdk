@@ -834,8 +834,35 @@ export interface FacelessReelCostEstimate {
   sceneCount: number;
 }
 
+/** 'shorts' = 9:16 reels; 'longform' = 16:9 explainer episodes. Picks the engine. */
+export type FacelessChannelFormat = 'shorts' | 'longform';
+
+/** Defaults every new episode of a channel inherits. */
+export interface FacelessChannelEpisodeDefaults {
+  aspect_ratio?: '16:9' | '9:16';
+  target_duration_sec?: number;
+  /** 'seamless' = each clip flows from the previous; 'scenes' = hard cuts; 'stills' = no animation. */
+  motion_style?: 'seamless' | 'scenes' | 'stills';
+}
+
+/**
+ * A faceless CHANNEL — a named recurring series that auto-produces episodes.
+ * This is the same object the Faceless Studio shows; "subscription" in the
+ * type and method names is retained for backwards compatibility.
+ */
 export interface FacelessReelSubscriptionInput {
+  /** The channel name. */
   label?: string;
+  /** Square channel avatar image URL. */
+  avatar_url?: string;
+  /** One-line pitch shown under the channel name. */
+  tagline?: string;
+  /** Longer channel description. */
+  description?: string;
+  /** Niche id (education, history, kids, storytelling, …). */
+  niche?: string;
+  format?: FacelessChannelFormat;
+  episode_defaults?: FacelessChannelEpisodeDefaults;
   preset_id?: string;
   style_id?: string;
   caption_preset_id?: string;
@@ -864,7 +891,15 @@ export interface FacelessReelSubscription {
   id: string;
   object: 'reel_subscription';
   enabled: boolean;
+  /** The channel name. */
   label?: string;
+  avatarUrl?: string;
+  tagline?: string;
+  description?: string;
+  niche?: string;
+  format?: FacelessChannelFormat;
+  /** camelCase on the way out — the subscription DTO predates the snake_case convention. */
+  episodeDefaults?: { aspectRatio: '16:9' | '9:16'; targetDurationSec: number; animationMode: 'full' | 'stills'; motionStyle?: 'seamless' | 'scenes' | 'stills' };
   presetId: string;
   captionPresetId: string;
   voiceId: string;
