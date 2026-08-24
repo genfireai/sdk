@@ -1213,6 +1213,143 @@ export interface CreatePictureBookRequest {
   team_id?: string;
 }
 
+// ── Coloring books ─────────────────────────────────────────────────────────
+// The same documents, runs and exports as picture books, drawn as
+// black-and-white line art. A separate request type rather than a flag,
+// because the inputs barely overlap.
+
+export type ColoringComplexity = 'toddler' | 'kids' | 'tween' | 'adult';
+export type ColoringLineWeight = 'bold' | 'medium' | 'fine';
+export type ColoringBorder = 'none' | 'thin' | 'decorative';
+
+export interface ColoringBookPageInput {
+  /**
+   * ONE concrete sentence naming what is drawn and what it is doing:
+   * "A barn owl landing on a fence post, wings spread wide."
+   *
+   * Never mention colour, shading, ink, outlines or "coloring page" — the
+   * medium is fixed and repeating it only confuses the drawing.
+   */
+  subject: string;
+  /** One short clause: where the subject sits in the frame, what fills the rest. */
+  composition?: string;
+  /** Two or three words naming the page; printed only if `captions` is on. */
+  caption?: string;
+  /** Cast NAMES in this drawing (recurring-character books only). */
+  cast?: string[];
+}
+
+export interface ColoringBookPlanInput {
+  title: string;
+  /** One line describing what every page shows. */
+  theme?: string;
+  subtitle?: string;
+  cast?: PictureBookCastInput[];
+  /**
+   * The pages, in order (8–120).
+   *
+   * THE RANGE RULE: no two may share a subject, and scale, angle, energy and
+   * setting must vary across the book. A forty-page book of one repeated idea
+   * is the default failure mode and it is worthless. Repeats are dropped
+   * server-side and reported in the estimate's `warnings`.
+   */
+  pages: ColoringBookPageInput[];
+  /** The most appealing subject in the book, for a FULL-COLOUR cover. */
+  cover_visual?: string;
+  back_cover_blurb?: string;
+}
+
+export interface CreateColoringBookRequest {
+  /** PREFERRED: your own page list — drawn exactly as written, no server planner. */
+  plan?: ColoringBookPlanInput;
+  /** Fallback: one line describing what every page shows. Provide plan OR theme. */
+  theme?: string;
+  title?: string;
+  /** How many drawings (8–120). With `blank_backs` on, the PRINTED interior is twice this. */
+  pages?: number;
+  /** How much detail is in each drawing — the choice that matters most. Default "kids". */
+  complexity?: ColoringComplexity;
+  /** Stroke weight. Defaults to what the complexity reads best at. */
+  line_weight?: ColoringLineWeight;
+  /** A frame drawn around each page. Default "none". */
+  border?: ColoringBorder;
+  /** A SUBJECT WORLD — see {@link GenFireClient.listColoringBookStyles}. The medium is always black ink on white paper. Default "animals". */
+  style_id?: string;
+  /** Trim id. Default "kdp-8.5x11" — the coloring-book shelf size. */
+  format_id?: string;
+  /** GPT Image 2 quality for every page. Default "low". */
+  quality?: PictureBookQuality;
+  /** Default true on print: a blank page behind every drawing so markers cannot bleed through. DOUBLES the printed page count and thickens the spine. */
+  blank_backs?: boolean;
+  /** Default false: a coloring page sits inside a white border you colour up to. */
+  bleed?: boolean;
+  /** Print each page's caption in the margin under the drawing. Default false. */
+  captions?: boolean;
+  /** Up to 4 recurring characters — character coloring books only. */
+  cast?: PictureBookCastInput[];
+  /** Bill a workspace credit pool instead of the personal balance. */
+  team_id?: string;
+}
+
+export interface ColoringBookCostEstimate {
+  object: 'coloring_book_cost_estimate';
+  estimated_credits: number;
+  breakdown: PictureBookCostLine[];
+  current_credits: number | null;
+  affordable: boolean | null;
+  plan: {
+    title: string;
+    theme: string;
+    pages: number;
+    /** Every page's subject — read these back before spending; it is the cheapest way to catch a repetitive book. */
+    subjects: string[];
+    /** Repeats that were dropped, and anything else advisory. */
+    warnings?: string[];
+  };
+  config: {
+    pages: number;
+    complexity: ColoringComplexity;
+    line_weight: ColoringLineWeight;
+    border: ColoringBorder;
+    style_id: string;
+    format_id: string;
+    quality: PictureBookQuality;
+    blank_backs: boolean;
+    bleed: boolean;
+  };
+  /** What the printer actually binds — blank backs double it. */
+  printed_interior_pages: number;
+}
+
+export interface ColoringBookCatalog {
+  object: 'coloring_book_catalog';
+  styles: Array<{
+    id: string;
+    label: string;
+    tagline: string;
+    /** What this world draws. A style never names a medium. */
+    subject_world: string;
+    suggested_complexity: ColoringComplexity;
+    palette: string[];
+    thumbnail_url: string;
+  }>;
+  formats: Array<{
+    id: string; label: string; kind: 'print' | 'digital'; group: string; aspect: string;
+    trim_in: { w: number; h: number } | null; note: string | null; kdp_ready: boolean;
+  }>;
+  complexities: Array<{
+    id: ColoringComplexity; label: string; ages: string; note: string;
+    line_weight: ColoringLineWeight; page_options: number[];
+  }>;
+  line_weights: ColoringLineWeight[];
+  borders: ColoringBorder[];
+  qualities: PictureBookQuality[];
+  export_kinds: PictureBookExportKind[];
+  page_range: { min: number; max: number; large_run: number };
+  defaults: Record<string, unknown>;
+  interior: string;
+}
+
 export interface PictureBookCostLine {
   label: string;
   unit_key: string;
@@ -2625,6 +2762,55 @@ export class GenFireClient {
   /** Export a picture book (free): interior-pdf | cover-pdf | ebook-pdf | images-zip. */
   exportPictureBook(bookId: string, kind: PictureBookExportKind, signal?: AbortSignal): Promise<PictureBookExport> {
     return this.request<PictureBookExport>('POST', `/picture-books/${encodeURIComponent(bookId)}/export`, { body: { kind }, signal });
+  }
+
+  // ── Coloring books ────────────────────────────────────────────────────────
+
+  /**
+   * Draw a complete black-and-white coloring book from your own `plan` (a list
+   * of page subjects, drawn as written) or a `theme` the free planner turns
+   * into one. Async — returns a Run in `processing`; poll it with
+   * {@link waitForRun} (minutes). The run's `resource_id` / `output.book_id`
+   * is the book id: read it with {@link getColoringBook} and export files with
+   * {@link exportColoringBook}. The studio link is
+   * https://genfire.ai/dashboard/coloring-books/{book_id}.
+   *
+   * This is NOT a picture book: there is no story, no words on the pages and
+   * no continuity between them. One line anchor fixes the stroke weight and
+   * every page is drawn from it; the only colour image is the cover.
+   */
+  createColoringBook(input: CreateColoringBookRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/coloring-books/generations', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Plan + price a coloring book without drawing it (same input as
+   * {@link createColoringBook}). Returns every page's subject and how many
+   * interior pages the book will actually PRINT — worth reading back before
+   * committing to a hundred-page run.
+   */
+  estimateColoringBookCost(input: CreateColoringBookRequest, signal?: AbortSignal): Promise<ColoringBookCostEstimate> {
+    return this.request<ColoringBookCostEstimate>('POST', '/coloring-books/estimate-cost', { body: input, signal });
+  }
+
+  /** The Coloring Book Studio catalog: subject worlds, trims, complexities, export kinds. */
+  listColoringBookStyles(signal?: AbortSignal): Promise<ColoringBookCatalog> {
+    return this.request<ColoringBookCatalog>('GET', '/coloring-books/styles', { signal });
+  }
+
+  /** One coloring book: status, progress, every page (with art URLs), print settings, exports. */
+  getColoringBook(bookId: string, signal?: AbortSignal): Promise<PictureBook> {
+    return this.request<PictureBook>('GET', `/coloring-books/${encodeURIComponent(bookId)}`, { signal });
+  }
+
+  /** Export a coloring book (free): interior-pdf (black & white) | cover-pdf (colour wrap) | ebook-pdf | images-zip. */
+  exportColoringBook(bookId: string, kind: PictureBookExportKind, signal?: AbortSignal): Promise<PictureBookExport> {
+    return this.request<PictureBookExport>('POST', `/coloring-books/${encodeURIComponent(bookId)}/export`, { body: { kind }, signal });
   }
 
   listWebhooks(signal?: AbortSignal): Promise<ListResponse<WebhookEndpoint>> {
