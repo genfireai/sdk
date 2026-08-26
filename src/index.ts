@@ -29,8 +29,12 @@ export type GenFireScope =
   | 'brands:read'
   | 'brands:write'
   | 'moodboards:read'
+  | 'projects:read'
+  | 'projects:write'
   | 'marketing:read'
-  | 'teams:read';
+  | 'teams:read'
+  | 'tasks:read'
+  | 'tasks:write';
 
 export type RunStatus = 'queued' | 'processing' | 'completed' | 'failed';
 export type BatchStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'partial';
