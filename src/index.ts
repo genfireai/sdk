@@ -21,6 +21,8 @@ export type GenFireScope =
   | 'reels:write'
   | 'social:read'
   | 'social:write'
+  | 'adsmanage:read'
+  | 'adsmanage:write'
   | 'uploads:write'
   | 'influencers:read'
   | 'influencers:write'
