@@ -670,6 +670,16 @@ export interface CreateVideoGenerationRequest {
    */
   reference_video_urls?: string[];
   /**
+   * Optional per-clip time windows for `reference_video_urls` — "use seconds
+   * 3–8 of the second clip" → `[{ index: 1, start: 3, end: 8 }]`. `index` is
+   * 0-based into `reference_video_urls` (or name the clip by `url`); seconds.
+   * Only the window is sent (cut server-side, audio kept). Must fit the model's
+   * per-clip cap (3s Omni Flash 1.1, 15s Hailuo 03 / Wan 3.0 — 15s total across
+   * the Wan pool — 30s Seedance) or the request is a 400
+   * `invalid_reference_video_trims`.
+   */
+  reference_video_trims?: Array<{ index?: number; url?: string; start: number; end: number }>;
+  /**
    * Hailuo 03 only (`video.hailuo_03`). Up to 3 reference audio clips, 2–15s
    * each, cited in the prompt as `Audio 1`, `Audio 2`, `Audio 3`. This is how an
    * on-camera character gets a consistent voice — e.g. "the woman in Image 1
