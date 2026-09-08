@@ -704,16 +704,47 @@ export interface CreateLipsyncGenerationRequest {
   duration?: number;
 }
 
-export interface CreateSpeechRequest {
+export interface DialogueLine {
   text: string;
+  /** A stock ElevenLabs voice id (cloned `fal_cloned_*` voices are not supported in dialogue). */
+  voice_id: string;
+}
+
+export interface CreateSpeechRequest {
+  /** The line to speak. Required unless `dialogue` is provided. */
+  text?: string;
   /**
    * Voice id. Required for ElevenLabs models (stock voice id or a cloned
    * `fal_cloned_<id>`). For `speech.seed_audio_1_0` it is OPTIONAL and takes a
    * Seed preset name (e.g. `vivi_mixed_en_zh_ja_es_id`) instead.
    */
   voice_id?: string;
+  /**
+   * Text to Dialogue (`speech.elevenlabs_dialogue_v3`, implied when present):
+   * ordered multi-speaker lines rendered as ONE file with matched prosody.
+   * ≤10 distinct voices, ≤2000 characters total; v3 audio tags allowed.
+   * Replaces `text` + `voice_id`.
+   */
+  dialogue?: DialogueLine[];
+  /** Defaults to `speech.elevenlabs_flash_v2_5` (Turbo v2.5 is deprecated upstream). */
   model?: string;
   voice_name?: string;
+  /** ElevenLabs only — ISO 639-1 code enforced on Flash/Turbo/v3 (ignored by Multilingual v2 and cloned voices). */
+  language_code?: string;
+  /** ElevenLabs only — best-effort reproducibility (0..4294967295). */
+  seed?: number;
+  /** ElevenLabs only — text spoken immediately BEFORE this chunk (request stitching). */
+  previous_text?: string;
+  /** ElevenLabs only — text spoken immediately AFTER this chunk (request stitching). */
+  next_text?: string;
+  /** ElevenLabs only — `auto` (default) | `on` | `off`. */
+  apply_text_normalization?: 'auto' | 'on' | 'off';
+  /** ElevenLabs only — voice_settings overrides ({ stability, similarity_boost, style, use_speaker_boost, speed }). */
+  voice_settings?: { stability?: number; similarity_boost?: number; style?: number; use_speaker_boost?: boolean; speed?: number };
+  /** Dialogue only — 0 | 0.5 | 1. */
+  stability?: number;
+  /** ElevenLabs only — return per-word `words` (and `voice_segments` for dialogue) in the run output. */
+  with_timestamps?: boolean;
   /** For `speech.seed_audio_1_0`: one of `wav`, `mp3`, `pcm`, `ogg_opus`. */
   output_format?: string;
   /** Up to 3 reference audio URLs, referenced in `text` as @Audio1–@Audio3. Seed Audio 1.0 only; not with image_url. */
@@ -722,7 +753,7 @@ export interface CreateSpeechRequest {
   image_url?: string;
   /** Output sample rate in Hz (8000/16000/24000/32000/44100/48000). Seed Audio 1.0 only. */
   sample_rate?: number;
-  /** Speech speed 0.5–2. Seed Audio 1.0 only. */
+  /** Speaking rate. ElevenLabs 0.7–1.2 (clamped); Seed Audio 1.0 0.5–2. */
   speed?: number;
   /** Volume 0.5–2. Seed Audio 1.0 only. */
   volume?: number;
@@ -731,8 +762,24 @@ export interface CreateSpeechRequest {
 }
 
 export interface CreateMusicRequest {
-  /** Text prompt. Required unless composition_plan is provided; the two cannot be combined. */
+  /** Text prompt. Required unless composition_plan or video_url is provided; prompt and composition_plan cannot be combined. */
   prompt?: string;
+  /**
+   * Video-to-music (ElevenLabs only): score this footage instead of composing
+   * from a prompt. Output length = video length (≤600s, ≤200MB); `prompt`
+   * becomes an optional description and `tags` steer style. Billed per second
+   * of video. Not with composition_plan.
+   */
+  video_url?: string;
+  /** Video-to-music only — up to 10 style tags. */
+  tags?: string[];
+  /**
+   * ElevenLabs only — keep the song server-side for inpainting. With
+   * include_details the run output carries `song_id`; reference it from a later
+   * music_v2 composition_plan as `{ song_id, range: { start_ms, end_ms } }`
+   * chunks to keep those bars and regenerate only the others.
+   */
+  store_for_inpainting?: boolean;
   /**
    * Structured composition plan instead of a prompt (ElevenLabs models only).
    * music_v1 shape: { positive_global_styles[], negative_global_styles[], sections[] }
@@ -1537,8 +1584,30 @@ export interface CreateTranscriptionRequest {
   video_url?: string;
   /** A YouTube URL to download and transcribe (max 2 hours). */
   youtube_url?: string;
-  /** Optional transcription model alias (defaults to transcription.whisper_v1). */
+  /**
+   * Transcription model alias: `transcription.whisper_v1` (default) or
+   * `transcription.elevenlabs_scribe_v2` (diarization, keyterms, entities,
+   * 90+ languages).
+   */
   model?: string;
+  /** Scribe only — ISO 639-1/639-3 code; omit to auto-detect. */
+  language?: string;
+  /** Scribe only — label speakers (default true); every word carries `speaker_id`. */
+  diarize?: boolean;
+  /** Scribe only — expected speaker count, 1–32. */
+  num_speakers?: number;
+  /** Scribe only — vocabulary to bias towards (≤1000 terms, <50 chars each). */
+  keyterms?: string[];
+  /** Scribe only — emit [laughter] / [applause] etc. as audio_event words (default true). */
+  tag_audio_events?: boolean;
+  /** Scribe only — drop fillers and disfluencies. */
+  no_verbatim?: boolean;
+  /** Scribe only — all | pii | phi | pci | other | offensive_language. */
+  entity_detection?: string | string[];
+  /** Scribe only — redact these entity classes in the transcript text. */
+  entity_redaction?: string | string[];
+  /** Scribe only — label agent/customer style roles where detectable. */
+  detect_speaker_roles?: boolean;
 }
 
 /** Shape of `run.output` for a completed transcription run. */
@@ -1547,9 +1616,12 @@ export interface TranscriptionOutput {
   text: string;
   language: string | null;
   duration: number | null;
-  words: Array<{ word: string; start: number; end: number; probability?: number }>;
-  segments: Array<{ id: number; start: number; end: number; text: string }>;
+  /** Whisper words carry `probability`; Scribe words carry `speaker_id` (when diarized) and `type: 'audio_event'` for tagged sounds. */
+  words: Array<{ word: string; start: number; end: number; probability?: number; speaker_id?: string; type?: 'audio_event' }>;
+  segments: Array<{ id: number; start: number; end: number; text: string; speaker_id?: string }>;
   audio_url: string | null;
+  /** Scribe only, when entity_detection was requested. */
+  entities?: unknown[] | null;
 }
 
 export interface ExtractProductRequest {
