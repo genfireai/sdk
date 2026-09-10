@@ -2292,10 +2292,11 @@ export class GenFireClient {
    * — a brand-new person generated from described traits). Provide exactly one.
    *
    * This is **asynchronous** and **billable**: the influencer is returned in
-   * `status: "creating"`, and the reference sheet (plus, for from-scratch, a
-   * hero photo) is generated server-side (~30–90s). Poll `getInfluencer(id)`
-   * until `status` is `ready` (or `failed`). For from-photos, `photoUrls` must
-   * be absolute https URLs; upload local files with `uploadFile()` first.
+   * `status: "creating"`, and BOTH identity artefacts are generated server-side
+   * (~60–90s) — a hero photo (`faceUrl`), then the 4-panel reference sheet
+   * derived from it (`sheetUrl`). Poll `getInfluencer(id)` until `status` is
+   * `ready` (or `failed`). For from-photos, `photoUrls` must be absolute https
+   * URLs; upload local files with `uploadFile()` first.
    */
   createInfluencer(options: CreateInfluencerOptions): Promise<Influencer> {
     const body: Record<string, unknown> =
