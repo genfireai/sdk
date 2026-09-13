@@ -80,6 +80,10 @@ export interface ListRunsParams {
   created_before?: string;
   /** Cap on how many records a keyword search may read (default 5000). */
   max_scan?: number;
+  /** Only runs billed to this workspace pool — "what has the team made". */
+  team_id?: string;
+  /** Only runs filed into this project — "what is in this folder". */
+  project_id?: string;
 }
 
 export interface ListBatchesParams {
@@ -172,6 +176,33 @@ export interface ModelCapabilities {
   source_video: boolean;
   motion_control: boolean;
   first_last_frame: boolean;
+  /**
+   * The flags below are served by `GET /v1/models` but postdate the six above,
+   * so they are optional: a `Model` read from an older deployment will not
+   * carry them, and `capabilities.x === true` is the only safe test.
+   */
+  /** Image-to-video accepts an `end_image_url` the clip lands on. */
+  end_frame?: boolean;
+  /** Accepts `reference_video_urls` / `reference_audio_urls`. */
+  reference_media?: boolean;
+  /** Accepts `camera_path` / `camera_trajectory`. */
+  camera_trajectory?: boolean;
+  /** The edit endpoint repaints only the white region of a `mask_url`. */
+  masked_inpaint?: boolean;
+  /** Accepts `keyframes` (images pinned to positions on the timeline). */
+  keyframes?: boolean;
+  /** Accepts `source_video_url` together with `reference_image_urls`. */
+  video_to_video_reference?: boolean;
+  /** Accepts `draft_cache_url` to re-render a draft at full quality. */
+  draft_enhance?: boolean;
+  /**
+   * GENFIRE GEDI: the reference endpoint accepts `task` — motion transfer
+   * (`reference`), video edit (`editing`) or continuation (`extension`).
+   * Filter a model picker on this rather than hard-coding the alias.
+   */
+  video_task?: boolean;
+  /** The schema declares `bitrate_mode` (`standard` | `high`). */
+  bitrate_mode?: boolean;
 }
 
 export interface Model {
@@ -228,7 +259,7 @@ export interface EstimateCostRequest {
   audio_base64?: string;
 }
 
-export interface CostEstimate {
+export interface CostEstimate extends PriceQuote {
   object: 'cost_estimate';
   model: string;
   capability: string;
@@ -319,7 +350,12 @@ export interface BatchItem {
   id: string;
   object: 'batch_item';
   batch_id: string;
+  /** Stable position in the submitted array. Never renumbered by a retry. */
   index: number;
+  /** The label you submitted, echoed back. Null when you sent none. */
+  custom_id: string | null;
+  /** How many times this item has been run. 0 on the first attempt. */
+  attempt: number;
   target: string;
   status: BatchItemStatus;
   run_id: string | null;
@@ -392,7 +428,7 @@ export interface InfluencerMention {
   influencer_id: string;
 }
 
-export interface CreateImageGenerationRequest {
+export interface CreateImageGenerationRequest extends TeamBillable, ProjectFileable, Quotable {
   prompt: string;
   model?: string;
   aspect_ratio?: string;
@@ -646,7 +682,7 @@ export interface PublishGameResponse {
   is_public: boolean;
 }
 
-export interface CreateVideoGenerationRequest {
+export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFileable, Quotable {
   prompt: string;
   model?: string;
   aspect_ratio?: string;
@@ -688,11 +724,39 @@ export interface CreateVideoGenerationRequest {
    */
   reference_audio_urls?: string[];
   generate_audio?: boolean;
-  /** Output encoding bitrate for Seedance 2.0: 'standard' or 'high'. 'high' requests a larger, higher-quality encode at no extra credit cost. */
+  /**
+   * Output ENCODE quality: 'standard' or 'high'. 'high' requests a larger,
+   * higher-quality file at no extra credit cost. Declared by
+   * `video.seedance_2_0`, `video.seedance_2_0_fast` and `video.seedance_2_5`;
+   * `video.seedance_2_0_mini` and every non-Seedance model have no such field
+   * and return 400 `unsupported_bitrate_mode` rather than dropping it from a
+   * run you paid for. Filter on `capabilities.bitrate_mode` in `listModels()`.
+   */
   bitrate_mode?: 'standard' | 'high';
+  /**
+   * GENFIRE GEDI — motion transfer and video edit. `video.seedance_2_5` only
+   * (`capabilities.video_task` in `listModels()`); any other model is a 400
+   * `unsupported_task`.
+   *
+   * - `'reference'` — MOTION TRANSFER. The clip in `reference_video_urls`
+   *   supplies the motion; the stills in `reference_image_urls` supply who or
+   *   what performs it. `aspect_ratio` and `duration` are yours.
+   * - `'editing'` — VIDEO EDIT. The clip itself is re-lit / swapped / cleaned
+   *   up, with any replacement subject in `reference_image_urls`. The output
+   *   follows the SOURCE, so the model coerces both `aspect_ratio` and
+   *   `duration` to auto — do not send them.
+   * - `'extension'` — continue the clip past its last frame. `aspect_ratio` is
+   *   coerced to auto; `duration` is yours.
+   *
+   * `'editing'` and `'extension'` need at least one `reference_video_urls`
+   * entry (400 `task_requires_reference_video` otherwise). Cite every reference
+   * in the prompt — `@Video1` is the first clip, `@Image1` the first still.
+   * Pre-written prompts for both modes: {@link GenFireClient.listGediPresets}.
+   */
+  task?: 'reference' | 'editing' | 'extension';
 }
 
-export interface CreateLipsyncGenerationRequest {
+export interface CreateLipsyncGenerationRequest extends TeamBillable, ProjectFileable, Quotable {
   video_url: string;
   audio_url?: string;
   audio_base64?: string;
@@ -710,7 +774,7 @@ export interface DialogueLine {
   voice_id: string;
 }
 
-export interface CreateSpeechRequest {
+export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quotable {
   /** The line to speak. Required unless `dialogue` is provided. */
   text?: string;
   /**
@@ -761,7 +825,7 @@ export interface CreateSpeechRequest {
   pitch?: number;
 }
 
-export interface CreateMusicRequest {
+export interface CreateMusicRequest extends TeamBillable, ProjectFileable, Quotable {
   /** Text prompt. Required unless composition_plan or video_url is provided; prompt and composition_plan cannot be combined. */
   prompt?: string;
   /**
@@ -849,7 +913,7 @@ export type MotionVibe = 'auto' | 'calm' | 'dynamic' | 'energetic';
  *  - `seedance-mini`: Seedance 2.0 mini (cheaper) */
 export type ReelVideoModel = 'grok' | 'seedance-mini';
 
-export interface CreateFacelessReelRequest {
+export interface CreateFacelessReelRequest extends TeamBillable, Quotable {
   /** Subject/seed for the reel. Use a phrase or "Surprise me with a fresh idea". */
   topic: string;
   /** Niche preset id — see {@link GenFireClient.listFacelessReelPresets}. */
@@ -1014,7 +1078,7 @@ export interface ExplainerScript {
   beats: ExplainerScriptBeat[];
 }
 
-export interface CreateExplainerRequest {
+export interface CreateExplainerRequest extends TeamBillable, ProjectFileable, Quotable {
   /** What the explainer is about. Required even alongside a script (titling/metadata). */
   topic: string;
   /** Structured agent-authored script. When present, Genfire makes ZERO
@@ -1117,7 +1181,7 @@ export interface MusicVideoInlineSong {
   instrumental?: boolean;
 }
 
-export interface CreateMusicVideoRequest {
+export interface CreateMusicVideoRequest extends TeamBillable, ProjectFileable, Quotable {
   /** Creative concept / narrative direction for the video. Steers the shot-list
    *  and styling. Required. */
   concept: string;
@@ -1180,6 +1244,68 @@ export interface MusicVideoCostEstimate {
 }
 
 /** A music-video visual style preset, accepted as `style_preset_id`. */
+// ── Genfire Gedi (motion transfer & video edit) ───────────────────────────────
+//
+// Both halves are ONE `createVideoGeneration` call on `video.seedance_2_5` with
+// a different `task`. These two catalogs are the recipe book: prompts already
+// written in the `@Video1` / `@Image1` citation idiom the model binds on.
+
+export type GediEditGroup = 'relight' | 'swap' | 'reframe' | 'cleanup' | 'restyle' | 'draw';
+
+export interface GediEditGroupInfo {
+  id: GediEditGroup;
+  label: string;
+  blurb: string;
+}
+
+export interface GediEditPreset {
+  id: string;
+  object: 'gedi_edit_preset';
+  label: string;
+  group: GediEditGroup;
+  task: 'editing';
+  /** Ready to send as `prompt`. Cites `@Video1`, and `@Image1` when it needs one. */
+  prompt: string;
+  /** The prompt cites `@Image1` — send at least one `reference_image_urls` entry. */
+  requires_image: boolean;
+  restyle_preset_id: string | null;
+  /** Region-based editing is not shipped yet. Listed, but do not call it. */
+  coming_soon: boolean;
+}
+
+export interface GediMotionPreset {
+  id: string;
+  object: 'gedi_motion_preset';
+  label: string;
+  task: 'reference';
+  prompt: string;
+  /** How many `reference_image_urls` entries the prompt cites (@Image1…). */
+  images: number;
+}
+
+export interface GediPresets {
+  object: 'gedi_presets';
+  /** The only model these recipes run on. */
+  model: string;
+  edit_groups: GediEditGroupInfo[];
+  edit_presets: GediEditPreset[];
+  motion_presets: GediMotionPreset[];
+}
+
+export interface GediMotion {
+  id: string;
+  object: 'gedi_motion';
+  title: string;
+  /** Pass as the single `reference_video_urls` entry of a `task: 'reference'` run. */
+  media_url: string;
+  thumbnail_url: string | null;
+  /** Seconds, where known. Counts against the 30.2s combined pool budget. */
+  duration: number | null;
+  aspect_ratio: string | null;
+  tags: string[];
+  prompt: string | null;
+}
+
 export interface MusicVideoStyle {
   id: string;
   name: string;
@@ -1568,7 +1694,7 @@ export interface PictureBook {
   updated_at: string;
 }
 
-export interface CreateSoundEffectRequest {
+export interface CreateSoundEffectRequest extends TeamBillable, ProjectFileable, Quotable {
   prompt: string;
   model?: string;
   duration_seconds?: number;
@@ -1577,7 +1703,7 @@ export interface CreateSoundEffectRequest {
   loop?: boolean;
 }
 
-export interface CreateTranscriptionRequest {
+export interface CreateTranscriptionRequest extends TeamBillable, ProjectFileable, Quotable {
   /** Direct audio file URL. Provide exactly one of audio_url / video_url / youtube_url. */
   audio_url?: string;
   /** Direct video file URL; audio is extracted before transcription. */
@@ -1630,13 +1756,30 @@ export interface ExtractProductRequest {
 
 export interface BatchRequestItem {
   input: Record<string, unknown>;
+  /**
+   * Your own label for this item, <= 64 chars and unique within the batch.
+   * Echoed back on the item, which is what lets a 50-row result be joined back
+   * to the rows you submitted without depending on `index`.
+   */
+  custom_id?: string;
 }
 
-export interface CreateBatchRequest {
+export interface CreateBatchRequest extends TeamBillable {
   mode: BatchMode;
+  /**
+   * For mode 'operation': `images.generations.create`,
+   * `videos.generations.create` or `audio.speech.create`. For mode 'workflow':
+   * any key from {@link GenFireClient.listWorkflows}.
+   */
   target: string;
   concurrency?: number;
   items: BatchRequestItem[];
+}
+
+export interface ListBatchItemsParams {
+  /** Fetch one state only — 'failed' is the useful one on a large batch. */
+  status?: BatchItemStatus;
+  limit?: number;
 }
 
 export interface CreateWebhookRequest {
@@ -1868,7 +2011,7 @@ export type MeshModelType = 'standard' | 'lowpoly';
 export type MeshPoseMode = 'a-pose' | 't-pose' | '';
 export type MeshSymmetryMode = 'off' | 'auto' | 'on';
 
-export interface Create3dModelRequest {
+export interface Create3dModelRequest extends TeamBillable, Quotable {
   /** Single source image (https URL). Provide this OR `image_urls`. */
   image_url?: string;
   /** 1–4 images of the SAME object from different angles. When more than one is
@@ -1905,14 +2048,14 @@ export interface Create3dModelRequest {
 
 // ── Upscaling and background removal ──────────────────────────────────────────
 
-export interface UpscaleImageRequest {
+export interface UpscaleImageRequest extends TeamBillable, Quotable {
   /** https URL of the image to upscale. Required. */
   source_image_url: string;
   /** 2 or 4. Default 2. */
   scale_factor?: 2 | 4;
 }
 
-export interface UpscaleVideoRequest {
+export interface UpscaleVideoRequest extends TeamBillable, Quotable {
   /** https URL of the video to upscale. Required. */
   source_video_url: string;
   /**
@@ -1930,7 +2073,7 @@ export interface UpscaleVideoRequest {
   prompt?: string;
 }
 
-export interface RemoveBackgroundRequest {
+export interface RemoveBackgroundRequest extends TeamBillable, ProjectFileable, Quotable {
   /** https URL of the image to cut out. Required. */
   image_url: string;
 }
@@ -2039,7 +2182,7 @@ export interface CreateAppGenerationRequest {
   asset_urls?: string[];
 }
 
-export interface DeployAppRequest {
+export interface DeployAppRequest extends TeamBillable {
   /** One complete <!DOCTYPE html> document — the whole app in a single file.
    *  Must be ≤ 1.5MB and end with </html>. Required. */
   html: string;
@@ -2151,6 +2294,842 @@ export interface AdResearch {
   note?: string;
 }
 
+// ── Run scope + price quotes ──────────────────────────────────────────────────
+// Three mixins rather than three fields copied onto twenty request types. Each
+// says exactly what the route it lands on supports, so a request type that does
+// NOT extend one is telling you the API answers 400 there rather than silently
+// ignoring the field.
+
+/** `team_id`: which credit pool pays. Routes that cannot bill a pool omit it. */
+export interface TeamBillable {
+  /**
+   * Bill this run to a WORKSPACE (team) credit pool instead of the personal
+   * balance. Ids come from `GET /v1/teams`; the key must hold
+   * the `teams:read` scope and the caller must be a member with a spending
+   * role. A failure here is typed: `team_pool_insufficient`,
+   * `team_member_cap`, `team_monthly_cap` or `member_budget_exceeded` — each a
+   * different fix, and none of them solved by buying personal credits.
+   */
+  team_id?: string;
+}
+
+/** `project_id`: where the output is filed once it completes. */
+export interface ProjectFileable {
+  /**
+   * File this run's output into a project the moment it completes. Only
+   * capabilities whose result is an image, video or audio can file; naming a
+   * project on any other route is a 400 `project_filing_unsupported` that says
+   * which, rather than a quiet no-op.
+   */
+  project_id?: string;
+}
+
+/** `quote_token`: spend a price you were already shown. */
+export interface Quotable {
+  /**
+   * The `quote_token` from the matching estimate call, to be charged the price
+   * that estimate returned. Optional — omit it and the live price applies.
+   *
+   * The binding is ASYMMETRIC: a quote is a CEILING, never a floor, so if the
+   * price dropped you pay the lower one. If it rose beyond the honour band, or
+   * the priced inputs changed, the submit is a 409 (`quote_expired` /
+   * `quote_mismatch`) carrying a FRESH quote in the problem body — resubmit
+   * with that rather than round-tripping back to the estimate call.
+   *
+   * May also be sent as the `X-Genfire-Quote` header via `options.headers`.
+   */
+  quote_token?: string;
+}
+
+/**
+ * The signed price every estimate endpoint now returns alongside the number it
+ * always returned. Nothing is persisted server-side: the token IS the quote.
+ */
+export interface PriceQuote {
+  quote_id: string;
+  credits: number;
+  unit: string;
+  breakdown: Record<string, unknown>;
+  /** ISO timestamp. Past it, a submit carrying this token is a 409. */
+  expires_at: string;
+  /** Pass back as `quote_token` on the paired submit. */
+  quote_token: string;
+}
+
+// ── Media inspection ──────────────────────────────────────────────────────────
+
+export interface InspectMediaRequest {
+  /** An https URL, an upload `asset_url`, or a past run id (`run_…`). */
+  url: string;
+}
+
+/**
+ * What ffprobe measured. The keys are the probe's own camelCase, unchanged on
+ * the wire. A REQUESTED duration is not a measured one — an 8s request often
+ * lands at 6.4s — so read this before trimming, composing or lip-syncing.
+ */
+export interface MediaInspection {
+  object: 'media_inspection';
+  source: { kind: 'run' | 'upload' | 'url'; run_id?: string; url: string };
+  durationSeconds: number | null;
+  /** Coded axes — what an ffmpeg filter argument needs. */
+  width: number | null;
+  height: number | null;
+  /** Rotation applied — what a human sees. Use these to lay out a frame. */
+  displayWidth: number | null;
+  displayHeight: number | null;
+  /** Normalized to [0,360). 90 or 270 means display and coded axes are swapped. */
+  rotation: number;
+  fps: number | null;
+  hasVideo: boolean;
+  hasAudio: boolean;
+  audioSampleRate?: number;
+  audioChannels?: number;
+  videoCodec?: string;
+  audioCodec?: string;
+  sizeBytes?: number;
+  container?: string;
+}
+
+// ── Website captures ──────────────────────────────────────────────────────────
+
+export interface CaptureViewport {
+  /** Label for the shot, slugified. Defaults to viewport-1, viewport-2… */
+  name?: string;
+  width: number;
+  height: number;
+  /** Emulate a mobile device (touch + device pixel ratio), not just a narrow window. */
+  mobile?: boolean;
+}
+
+export interface CreateCaptureRequest extends ProjectFileable {
+  /** The page to capture. A bare domain is accepted (https is assumed). */
+  url: string;
+  /** Up to 4 frames. Omit for the default pair: desktop 1440x900, mobile 390x844. */
+  viewports?: CaptureViewport[];
+  /** Capture the entire scroll height instead of just the fold. */
+  full_page?: boolean;
+}
+
+// ── Voice conversion (speech-to-speech) ───────────────────────────────────────
+
+export interface CreateVoiceConversionRequest extends TeamBillable, ProjectFileable {
+  /** The performance to re-voice. https URL or an upload `asset_url`. */
+  audio_url: string;
+  /** Target speaker, from {@link GenFireClient.listVoices}. */
+  voice_id: string;
+  /** Defaults to the ElevenLabs voice-changer model. */
+  model?: string;
+  /** Strip room tone and background noise from the source first. */
+  remove_background_noise?: boolean;
+  /** Title for the resulting clip in the user's library. */
+  title?: string;
+}
+
+// ── Compose ───────────────────────────────────────────────────────────────────
+
+export interface ComposeClip {
+  /** The scene's media: an https URL or a past run id. */
+  url: string;
+  /** Default 'video'. An 'image' holds for `duration_sec` and can take `motion`. */
+  kind?: 'video' | 'image';
+  /** THIS scene's voiceover. It moves with the clip through every trim and crossfade. */
+  audio_url?: string;
+  /** 'replace' (default) swaps the clip's sound; 'mix' keeps it underneath, ducked. */
+  audio_mode?: 'replace' | 'mix';
+  /** When the line outruns the footage, hold the last frame. Default true. */
+  hold_last_frame?: boolean;
+  /** Image clips: how long the still holds. Defaults to its audio's length, else 5s. */
+  duration_sec?: number;
+  trim_in_sec?: number;
+  trim_out_sec?: number;
+  /** Crossfade INTO this clip, in ms. 0 (default) is a hard cut. */
+  transition_ms?: number;
+  /** Image clips: Ken-Burns move, e.g. 'kenburns-in', 'kenburns-pan', 'handheld-shake'. */
+  motion?: string;
+  motion_intensity?: 'subtle' | 'default' | 'punchy';
+  mute_audio?: boolean;
+}
+
+export interface ComposeTrack {
+  url: string;
+  /** Absolute seconds on the FINISHED timeline. Default 0. */
+  start_sec?: number;
+  /** 0-1. Put a music bed at 0.1-0.2 so it sits under the voice. */
+  volume?: number;
+  loop?: boolean;
+  fade_in_sec?: number;
+  fade_out_sec?: number;
+}
+
+export interface ComposeCaptionWord {
+  text: string;
+  start_sec: number;
+  end_sec: number;
+}
+
+export interface ComposeCaptions {
+  /** Caption style id. 'none' turns captions off. */
+  preset_id: string;
+  position?: string;
+  animation?: string;
+  /**
+   * The transcript you already have, burned as WRITTEN: the server
+   * force-aligns it to the composed audio and solves only the timing. Pass it
+   * whenever you authored the lines — it is the difference between the exact
+   * requested wording on screen and a transcriber's guess at it. Mutually
+   * exclusive with `words`.
+   */
+  text?: string;
+  /**
+   * Timings you ALREADY hold, burned verbatim. Must be ascending and
+   * non-overlapping — they are drawn in the order given. Mutually exclusive
+   * with `text`.
+   */
+  words?: ComposeCaptionWord[];
+  words_per_line?: number;
+}
+
+export interface ComposeVideoRequest extends ProjectFileable {
+  /** Scenes in playback order, up to 60. */
+  clips: ComposeClip[];
+  /** Tracks pinned to absolute timeline positions, up to 32. */
+  audio?: ComposeTrack[];
+  aspect_ratio?: '16:9' | '9:16' | '1:1' | '4:5' | '21:9';
+  /** 'cover' (default) crops to fill; 'contain' letterboxes. */
+  fit?: 'cover' | 'contain';
+  transition_ms?: number;
+  /** Duck EVERY clip's own audio to this level so the tracks sit on top. */
+  clip_audio_volume?: number;
+  captions?: ComposeCaptions;
+  title?: string;
+}
+
+// ── Timelines ─────────────────────────────────────────────────────────────────
+// The persisted, re-renderable edit — what compose cannot express. compose
+// assembles clips end to end; a timeline places them ON TOP of each other at
+// exact positions, stores that, and can be patched and rendered again.
+
+export interface TimelineClipLayout {
+  /** Horizontal offset from centre, percent of frame width (-100..100). */
+  x: number;
+  /** Vertical offset from centre, percent of frame height (-100..100). */
+  y: number;
+  /** Size relative to the frame, 0.2..3. */
+  scale: number;
+  /** Degrees clockwise. */
+  rotation?: number;
+}
+
+export interface TimelineTextStyle {
+  fontSize: number;
+  fontWeight: number;
+  fontFamily?: string;
+  textColor: string;
+  activeColor?: string;
+  strokeColor?: string;
+  strokeWidth?: number;
+  backgroundOpacity: number;
+  captionPresetId?: string;
+  captionWords?: Array<{ word: string; start: number; end: number }>;
+  captionAnimation?: 'highlight' | 'pop' | 'typewriter' | 'classic';
+  blendMode?: 'normal' | 'overlay' | 'screen' | 'multiply' | 'difference';
+  gradientColors?: [string, string];
+  gradientDirection?: number;
+}
+
+/**
+ * One clip. Field names are camelCase — the manifest is the video editor's own
+ * wire shape, shared verbatim so a timeline the editor would render is a
+ * timeline the API accepts.
+ */
+export interface TimelineClip {
+  /** Your id, unique in the timeline. Keep it stable across edits. */
+  id: string;
+  type: 'video' | 'image' | 'text' | 'audio';
+  /** Which `sources[]` entry this plays. Required for every type except `text`. */
+  sourceId?: string;
+  /** When it starts on the FINISHED timeline, in seconds. */
+  startTime: number;
+  duration: number;
+  /** Seconds into the source to start from — the in-point. Default 0. */
+  sourceStartTime?: number;
+  /** Level, 0..2. Default 1. */
+  volume?: number;
+  muted?: boolean;
+  /** Z-ORDER, not a lane: 0 is the base layer, higher numbers paint on top. */
+  trackIndex?: number;
+  layout?: TimelineClipLayout;
+  /** `text` clips only. */
+  textContent?: string;
+  /** `text` clips only. */
+  textStyle?: TimelineTextStyle;
+  watermarkOpacity?: number;
+  previewContainerWidth?: number;
+}
+
+/** A source as the CALLER declares it. Stored as the ref, never a resolved URL. */
+export interface TimelineSourceInput {
+  /** The id clips point at through `sourceId`. Letters, digits, `_` and `-`. */
+  id: string;
+  /** An https URL, an upload `asset_url`, or a past run id (`run_…`). */
+  ref: string;
+}
+
+export interface TimelineSourceMeasurement {
+  durationSeconds: number | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  hasVideo: boolean;
+  hasAudio: boolean;
+  probedAt: string;
+}
+
+/** A source as the API STORES it: the ref, plus the resolution taken on write. */
+export interface TimelineSource extends TimelineSourceInput {
+  kind: 'run' | 'upload' | 'url';
+  /** Convenience for reads only — a render always re-resolves from `ref`. */
+  url: string;
+  measured?: TimelineSourceMeasurement;
+}
+
+// ── v2: the keyframed graphics overlay ────────────────────────────────────────
+// `manifest.graphics` is the whole of what `version: 2` adds. A v1 manifest is
+// a v2 manifest with no graphics, and both render through the same compositor,
+// so nothing below is a breaking change to a stored timeline.
+
+/**
+ * The eases a layer may name, spelled the way GSAP spells them, and
+ * deliberately SMALL: every entry survives a round trip through the composer
+ * into a headless render and means the same thing on every host. `power1` is
+ * quad and `power2` is cubic; `linear` is emitted as GSAP's `none`.
+ */
+export const GRAPHICS_EASES = [
+  'linear',
+  'power1.in',
+  'power1.out',
+  'power1.inOut',
+  'power2.in',
+  'power2.out',
+  'power2.inOut',
+  'back.out',
+  'expo.out'
+] as const;
+export type GraphicsEase = (typeof GRAPHICS_EASES)[number];
+
+/**
+ * The fonts a layer may name. VENDORED into the renderer, not fetched: a name
+ * outside this list is rejected at write time rather than silently resolving to
+ * whatever the render container happens to have, and there is no fallback
+ * family — the face you ask for is the face you get.
+ */
+export const GRAPHICS_FONTS = ['Inter', 'Outfit'] as const;
+export type GraphicsFont = (typeof GRAPHICS_FONTS)[number];
+
+/** Properties a keyframe may drive. `rotateX`/`rotateY` are the 2.5D pair. */
+export const GRAPHICS_KEYFRAME_PROPERTIES = [
+  'x',
+  'y',
+  'scale',
+  'rotation',
+  'opacity',
+  'rotateX',
+  'rotateY'
+] as const;
+export type GraphicsKeyframeProperty = (typeof GRAPHICS_KEYFRAME_PROPERTIES)[number];
+
+/** Ceilings. Each one is a memory or render-time bound, not a taste call. */
+export const GRAPHICS_LIMITS = {
+  maxLayers: 50,
+  maxKeyframesPerLayer: 200,
+  maxTextLength: 2000
+} as const;
+
+/**
+ * One keyframe. `t` is ABSOLUTE composition time, not an offset from the
+ * layer's `start` — a caller reading the manifest next to a timeline ruler
+ * should not have to do arithmetic to know when something happens. Within one
+ * property `t` must STRICTLY increase and every `t` must fall inside the
+ * layer's `[start, end]`; both are 400 `invalid_graphics`, not a silent
+ * reorder. `ease` describes the segment ARRIVING at this keyframe, so it is
+ * ignored on a property's first one.
+ */
+export interface GraphicsKeyframe {
+  property: GraphicsKeyframeProperty;
+  t: number;
+  value: number;
+  /** Default `linear`. */
+  ease?: GraphicsEase;
+}
+
+/**
+ * The layer's resting state, in AUTHORING-FRAME pixels (the manifest's own
+ * `width` × `height`, never percentages). `x`/`y` place the layer box's
+ * top-left corner; `scale` and `rotation` are taken about the box's centre. A
+ * property with keyframes ignores its value here and starts from its first
+ * keyframe instead.
+ */
+export interface GraphicsTransform {
+  x: number;
+  y: number;
+  /** Box width in px. Defaults to the rest of the frame (`manifest.width - x`). */
+  width?: number;
+  /** Box height in px. Text and counters default to auto; shapes and images fill. */
+  height?: number;
+  /** Default 1. */
+  scale?: number;
+  /** Degrees clockwise. Default 0. */
+  rotation?: number;
+  /** 0-1. Default 1. */
+  opacity?: number;
+}
+
+/**
+ * 2.5D. `perspective` is the viewing distance in px; without it a `rotateX`
+ * reads as a flat vertical squash rather than a tilt.
+ */
+export interface GraphicsTransform3d {
+  rotateX?: number;
+  rotateY?: number;
+  perspective?: number;
+}
+
+/**
+ * A mask on the layer box, expressed in FRACTIONS of that box (0-1) rather
+ * than pixels, so a mask lands identically at preview and final scale — the
+ * same invariant the render resolution keeps. `x + width` and `y + height`
+ * must be <= 1. `rect` and `ellipse` become a CSS `clip-path`; `image` becomes
+ * a `mask-image` whose alpha is the matte.
+ */
+export interface GraphicsMask {
+  kind: 'rect' | 'ellipse' | 'image';
+  /** Fractions of the layer box. Default 0, 0, 1, 1 — the whole box. */
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  /** `rect` only. Corner radius as a fraction of the box's short edge. */
+  radius?: number;
+  /** `image` only. Same ref rules as an image layer's `src`. */
+  src?: string;
+}
+
+/** How a text layer arrives. `unit` is what gets staggered. */
+export interface GraphicsTextEntrance {
+  kind: 'fade-up' | 'pop' | 'typewriter' | 'slide' | 'blur-in';
+  /** Default `word`. */
+  unit?: 'word' | 'char' | 'line';
+  /** Seconds between successive units. Default 0.06. */
+  stagger?: number;
+  /** Seconds each unit takes. Default 0.6. */
+  duration?: number;
+}
+
+/** How a counter's number is written out. No locale involved. */
+export interface GraphicsCounterFormat {
+  /** `integer` rounds, `decimal1` keeps one place, `percent` appends `%`. */
+  style?: 'integer' | 'decimal1' | 'percent';
+  prefix?: string;
+  suffix?: string;
+  /** Thousands separators. Off by default, so a year does not become "2,026". */
+  group?: boolean;
+}
+
+export interface GraphicsLayerBase {
+  /** Unique in the manifest, and the rendered element's id: `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`. */
+  id: string;
+  start: number;
+  end: number;
+  /** Paint order inside the overlay. Higher paints on top; ties break on `id`. */
+  z?: number;
+  transform: GraphicsTransform;
+  transform3d?: GraphicsTransform3d;
+  keyframes?: GraphicsKeyframe[];
+  mask?: GraphicsMask;
+}
+
+/** Colours are hex (`#rgb`, `#rrggbb`, `#rrggbbaa`) or `rgb()`/`rgba()`. Named colours and `var()` are rejected. */
+export interface GraphicsTextLayer extends GraphicsLayerBase {
+  kind: 'text';
+  /** At most {@link GRAPHICS_LIMITS}.maxTextLength characters. */
+  text: string;
+  font?: GraphicsFont;
+  /** px in the authoring frame. Default 48. */
+  size?: number;
+  /** 100-900 — the vendored faces are variable, so any value is real. Default 700. */
+  weight?: number;
+  color?: string;
+  align?: 'left' | 'center' | 'right';
+  lineHeight?: number;
+  letterSpacing?: number;
+  entrance?: GraphicsTextEntrance;
+}
+
+export interface GraphicsImageLayer extends GraphicsLayerBase {
+  kind: 'image';
+  /**
+   * An https URL, or `source:<id>` naming an entry in the manifest's own
+   * `sources[]` — the second form is the one that survives a signed URL
+   * expiring, for the same reason a source stores its ref and not a URL.
+   */
+  src: string;
+  fit?: 'cover' | 'contain' | 'fill';
+  /** Corner radius in authoring-frame px. */
+  radius?: number;
+}
+
+export interface GraphicsShapeLayer extends GraphicsLayerBase {
+  kind: 'shape';
+  shape?: 'rect' | 'ellipse' | 'line';
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  radius?: number;
+}
+
+export interface GraphicsCounterLayer extends GraphicsLayerBase {
+  kind: 'counter';
+  from?: number;
+  to: number;
+  font?: GraphicsFont;
+  size?: number;
+  weight?: number;
+  color?: string;
+  align?: 'left' | 'center' | 'right';
+  format?: GraphicsCounterFormat;
+  /** The ease of the COUNT itself, independent of any transform keyframes. Default `power2.out`. */
+  ease?: GraphicsEase;
+}
+
+export type GraphicsLayer =
+  | GraphicsTextLayer
+  | GraphicsImageLayer
+  | GraphicsShapeLayer
+  | GraphicsCounterLayer;
+
+/**
+ * The graphics block of a `version: 2` manifest.
+ *
+ * Rendered into ONE full-frame transparent track and composited over the
+ * footage in a single pass, so it never touches your clips or your audio.
+ * Z-ORDER is footage < graphics < captions, because a caption must always be
+ * readable; `aboveCaptions` flips the last pair for the case where the
+ * graphics ARE the design.
+ *
+ * A bad field is 400 `invalid_graphics` naming `graphics.layers[N].field`, and
+ * it is raised BEFORE any source is resolved or probed. Whether the layers FIT
+ * is answered at RENDER time instead: an overflowing layer fails the render run
+ * with `graphics_layout_invalid` carrying what the layout audit measured, and a
+ * font the renderer cannot find is `graphics_font_missing`. Both are terminal —
+ * neither improves on a retry.
+ */
+export interface TimelineGraphics {
+  /** At most {@link GRAPHICS_LIMITS}.maxLayers. */
+  layers: GraphicsLayer[];
+  aboveCaptions?: boolean;
+}
+
+export interface TimelineManifest {
+  /** 1, or 2 when `graphics` is present. Nothing else distinguishes them. */
+  version: number;
+  duration: number;
+  width: number;
+  height: number;
+  fps: number;
+  clips: TimelineClip[];
+  sources: TimelineSource[];
+  /** `version: 2` only. Absent on every v1 manifest. */
+  graphics?: TimelineGraphics;
+}
+
+export interface Timeline {
+  id: string;
+  object: 'timeline';
+  /** Monotonic. Every manifest write bumps it; it is the concurrency token. */
+  rev: number;
+  /** sha256 over the manifest's stable JSON — the identity of the CONTENT. */
+  manifest_hash: string;
+  title: string | null;
+  project_id: string | null;
+  manifest: TimelineManifest;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The manifest as a caller writes it. Identical on create and update. */
+export interface TimelineManifestInput {
+  /** Total length of the finished film, seconds. Must cover every clip. */
+  duration: number;
+  /** Frame width in pixels, 16-3840. Stated, never derived from a preset. */
+  width: number;
+  /** Frame height in pixels, 16-3840. */
+  height: number;
+  /** 1-120. Default 30. */
+  fps?: number;
+  clips: TimelineClip[];
+  sources: TimelineSourceInput[];
+  /**
+   * Keyframed overlay layers. Sending it stores the manifest at `version: 2`;
+   * omitting it leaves it at `version: 1`, hashing exactly as it did before.
+   *
+   * On {@link UpdateTimelineRequest} this replaces WHOLE like everything else
+   * in the manifest, so omitting the block on a PATCH DELETES the overlay and
+   * takes the timeline back to v1.
+   */
+  graphics?: TimelineGraphics;
+  title?: string;
+}
+
+export interface CreateTimelineRequest extends TimelineManifestInput, TeamBillable, ProjectFileable {}
+
+export interface UpdateTimelineRequest extends TimelineManifestInput {
+  /**
+   * The `rev` the last read reported. REQUIRED: without it the API answers 428
+   * rather than last-write-wins, and a stale one is a 409. Sent as `If-Match`
+   * when {@link GenFireClient.updateTimeline} is given it this way.
+   */
+  rev: number;
+}
+
+export interface RenderTimelineRequest {
+  /**
+   * `preview` (default) is the SAME compositor at 480p on the short edge — an
+   * honest proxy for the final, not a second renderer — and its bytes are
+   * cached by manifest content, so re-rendering an unchanged revision reports
+   * `output.cached` and costs one pass. `final` is the stated frame.
+   */
+  mode?: 'preview' | 'final';
+  /** Guard, not a selector: render only if the timeline is still at this rev. */
+  rev?: number;
+}
+
+/** Shape of `run.output` for a completed timeline render. */
+export interface TimelineRenderOutput {
+  video_url: string;
+  duration_seconds: number | null;
+  width: number | null;
+  height: number | null;
+  mode: 'preview' | 'final';
+  rev: number;
+  /** What ffprobe read back off the finished file, or null if it could not. */
+  measured: {
+    duration_seconds: number | null;
+    width: number | null;
+    height: number | null;
+    fps: number | null;
+    has_audio: boolean;
+    probed_at: string;
+  } | null;
+  /** True when the bytes came from an earlier render of the same content. */
+  cached: boolean;
+  /**
+   * `version: 2` renders only. How much overlay there was and what it cost, so
+   * a slow render can be attributed to the graphics or to the footage.
+   */
+  graphics?: {
+    layers: number;
+    frames: number;
+    render_ms: number;
+  };
+}
+
+// ── Presets + canvas workflows ────────────────────────────────────────────────
+
+export interface PresetInput {
+  /** The key to use in {@link RunPresetRequest.inputs}. */
+  name: string;
+  type?: string;
+  label?: string;
+  description?: string;
+  default?: unknown;
+  node_id?: string;
+  param?: string;
+}
+
+export interface Preset {
+  id: string;
+  object: 'preset';
+  title: string;
+  description?: string | null;
+  /** Build {@link RunPresetRequest.inputs} from these, not from the prose. */
+  inputs: PresetInput[];
+  /** Credits at the preset's own defaults. */
+  cost_credits?: number;
+  /** One-time unlock price, when this is a paid preset. */
+  price_credits?: number | null;
+  [key: string]: unknown;
+}
+
+/** One node's share of an estimate. */
+export interface CostEstimateNode {
+  node_id: string;
+  kind: string;
+  credits: number;
+  /** Already computed from these inputs, so free to re-run. */
+  cached?: boolean;
+}
+
+/** Price a preset run without starting one. Free; creates nothing. */
+export interface EstimatePresetRequest extends TeamBillable, ProjectFileable {
+  /** Flat `{ name: value }` over the preset's own `inputs[]`. Part of the quote's hash. */
+  inputs?: Record<string, string | number | boolean | null>;
+}
+
+/**
+ * What {@link GenFireClient.estimatePreset} returns.
+ *
+ * The same `canvas_workflow_run` capability {@link WorkflowCostEstimate}
+ * carries, quoted over a preset id and rev instead of a workflow id and node
+ * selection — which is exactly why a token from one is a 409 on the other's
+ * submit.
+ */
+export interface PresetCostEstimate extends Omit<PriceQuote, 'breakdown'> {
+  object: 'cost_estimate';
+  /** Per node, with the ones already `cached` marked. */
+  breakdown: CostEstimateNode[];
+  preset_id: string;
+  /** The preset revision this price was taken against. Part of the quote's hash. */
+  preset_rev: number | null;
+  /** Every runnable node — a preset run selects them all, so nothing is served from cache. */
+  selected_node_ids: string[];
+}
+
+/**
+ * {@link Quotable} since the preset estimate endpoint landed: that call hashes
+ * its quote over `{presetId, presetRev, inputs}`, which is exactly what this
+ * route verifies. A token from {@link estimateUserWorkflow} is the same
+ * capability hashed over a workflow id and a node selection, so passing one
+ * here is a 409 `quote_mismatch` — the token must come from
+ * {@link GenFireClient.estimatePreset}.
+ */
+export interface RunPresetRequest extends TeamBillable, ProjectFileable, Quotable {
+  /** Flat `{ name: value }` over the preset's own `inputs[]`. */
+  inputs?: Record<string, string | number | boolean | null>;
+  /**
+   * Pay a paid preset's one-time unlock. Send it only after a 402
+   * `preset_purchase_required` has told you the price AND the user agreed.
+   */
+  confirm_purchase?: boolean;
+}
+
+export interface PresetRun {
+  object: 'preset_run';
+  presetId: string;
+  presetVersion: number | null;
+  /**
+   * The caller's own instantiated copy. A preset run IS a canvas run, filed
+   * under that copy — read it with `getUserWorkflowRun(workflowId, runId)`.
+   * {@link getRun} looks in the flat run collection and answers 404
+   * `run_not_found` for it.
+   */
+  workflowId: string;
+  runId: string;
+  totalCostCredits: number;
+  pageId: string;
+  selectedNodeIds: string[];
+}
+
+/**
+ * Which page, which nodes and which overrides a canvas call targets.
+ *
+ * Shared by {@link EstimateUserWorkflowRequest} and
+ * {@link RunUserWorkflowRequest} for the reason the API shares one parser
+ * between the two routes: a quote is only worth something if it was priced
+ * against the identical target the run submits, and two shapes would drift on
+ * the first field either side gained.
+ */
+export interface UserWorkflowRunTarget {
+  /** Which page of the canvas. Defaults to the first one. */
+  page_id?: string;
+  /** Only these nodes AND everything they depend on. Omit for the page's Export nodes and generation leaves. */
+  selected_node_ids?: string[];
+  /**
+   * Per-run parameter overrides, keyed by NODE and two levels deep:
+   * `{ "<node_id>": { "<param>": value } }`. A flat `"node.param"` key is a
+   * 400 `invalid_param_overrides`. Values are primitives; 50KB in total.
+   */
+  param_overrides?: Record<string, Record<string, string | number | boolean | null>>;
+}
+
+export interface EstimateUserWorkflowRequest extends UserWorkflowRunTarget {}
+
+/**
+ * Deliberately NOT {@link TeamBillable} or {@link ProjectFileable}, and both
+ * omissions are the route's: the canvas bills the workspace the workflow
+ * itself belongs to (`team_id` is a 400 `team_billing_unsupported` telling you
+ * to move the workflow), and its nodes file their own outputs (`project_id` is
+ * a 400 `project_filing_unsupported`).
+ */
+export interface RunUserWorkflowRequest extends UserWorkflowRunTarget, Quotable {}
+
+/** What a kickoff returns. 202 — nothing has finished yet. */
+export interface UserWorkflowRun {
+  /**
+   * The canvas the run belongs to — echoed back from the call, since a canvas
+   * run is addressed UNDER its workflow. Read it with
+   * `getUserWorkflowRun(workflowId, runId)`; {@link getRun} looks in the flat
+   * run collection and answers 404 `run_not_found` for it.
+   */
+  workflowId: string;
+  runId: string;
+  totalCostCredits: number;
+  pageId: string;
+  /** The selection the server RESOLVED, which is the default one when you sent none. */
+  selectedNodeIds: string[];
+}
+
+/** One node's state inside a canvas run. */
+export interface UserWorkflowNodeExecution {
+  nodeId: string;
+  status: string;
+  error?: string;
+  output: { type: string; url?: string; text?: string } | null;
+}
+
+export interface UserWorkflowRunDeliverable {
+  node_id: string;
+  kind: string;
+  output: { type: string; url?: string; text?: string };
+}
+
+export interface UserWorkflowRunStatus {
+  runId: string;
+  workflowId: string;
+  pageId: string;
+  status: string;
+  totalCostCredits: number;
+  /**
+   * The graph revision this run actually executed — null on runs started
+   * before runs pinned one. It is what tells a run apart from the canvas as it
+   * stands now.
+   */
+  workflowRev: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  error: string | null;
+  nodes: UserWorkflowNodeExecution[];
+  /**
+   * `deliverables` are the ANSWER — the nodes the user asked for; the
+   * `intermediates` are the work that produced it. Show the deliverables and
+   * reach into the intermediates only when asked how something was made.
+   */
+  output: {
+    deliverables: UserWorkflowRunDeliverable[];
+    intermediates: UserWorkflowRunDeliverable[];
+  };
+}
+
+export interface WorkflowCostEstimate extends Omit<PriceQuote, 'breakdown'> {
+  object: 'cost_estimate';
+  /** Per node: which ones are already `cached` and therefore free to re-run. */
+  breakdown: CostEstimateNode[];
+  /** The graph revision this price was taken against. */
+  workflow_rev: number | null;
+  page_id: string;
+  selected_node_ids: string[];
+}
+
 // ── Usage ─────────────────────────────────────────────────────────────────────
 
 export type UsageGroupBy = 'model' | 'capability' | 'day' | 'none';
@@ -2186,6 +3165,12 @@ export interface GetUsageParams {
   group_by?: UsageGroupBy;
   /** Restrict to one capability, e.g. 'video_generation'. */
   capability?: string;
+  /**
+   * Report a WORKSPACE's spend instead of this account's. Not a filter: a
+   * pool's spend lives in the pool's own ledger, never on this account's run
+   * docs, so this switches the SOURCE. Needs membership and `teams:read`.
+   */
+  team_id?: string;
 }
 
 export class GenFireClient {
@@ -2413,7 +3398,9 @@ export class GenFireClient {
         starting_after: params.starting_after,
         created_after: params.created_after,
         created_before: params.created_before,
-        max_scan: params.max_scan
+        max_scan: params.max_scan,
+        team_id: params.team_id,
+        project_id: params.project_id
       },
       signal
     });
@@ -2462,8 +3449,41 @@ export class GenFireClient {
     return this.request<Batch>('GET', `/batches/${encodeURIComponent(batchId)}`, { signal });
   }
 
-  listBatchItems(batchId: string, signal?: AbortSignal): Promise<ListResponse<BatchItem>> {
-    return this.request<ListResponse<BatchItem>>('GET', `/batches/${encodeURIComponent(batchId)}/items`, { signal });
+  listBatchItems(batchId: string, params: ListBatchItemsParams = {}, signal?: AbortSignal): Promise<ListResponse<BatchItem>> {
+    return this.request<ListResponse<BatchItem>>('GET', `/batches/${encodeURIComponent(batchId)}/items`, {
+      query: { status: params.status, limit: params.limit },
+      signal
+    });
+  }
+
+  /**
+   * ONE item of a batch — its index, custom_id, attempt, status, run_id,
+   * output and error — instead of re-reading the whole grid to answer one
+   * question.
+   */
+  getBatchItem(batchId: string, itemId: string, signal?: AbortSignal): Promise<BatchItem> {
+    return this.request<BatchItem>(
+      'GET',
+      `/batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(itemId)}`,
+      { signal }
+    );
+  }
+
+  /**
+   * Re-run ONE `failed` item. Per item, not per batch: one provider timeout in
+   * a 50-item job should not mean re-paying for the 49 that worked.
+   *
+   * THIS BILLS AGAIN, exactly like submitting that item fresh — there is no
+   * idempotency key to replay it against, and a duplicate retry already in
+   * flight is a 409. A completed item is never re-run. The item keeps its
+   * `index` and `custom_id`; its `attempt` increments.
+   */
+  retryBatchItem(batchId: string, itemId: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<BatchItem> {
+    return this.request<BatchItem>(
+      'POST',
+      `/batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(itemId)}/retry`,
+      { signal: options.signal, headers: options.headers }
+    );
   }
 
   createBatch(input: CreateBatchRequest, options: RequestOptions = {}): Promise<BatchWithItems> {
@@ -2585,6 +3605,49 @@ export class GenFireClient {
       signal: options.signal,
       headers: options.headers
     });
+  }
+
+  // ── Genfire Gedi ────────────────────────────────────────────────────────────
+
+  /**
+   * The Gedi recipe book: 25 video-EDIT recipes across six families and 6
+   * MOTION-TRANSFER recipes, each with the prompt already written in the
+   * `@Video1` / `@Image1` idiom Seedance 2.5 binds on. Free.
+   *
+   * Run one with {@link createVideoGeneration}:
+   * ```ts
+   * const { edit_presets } = await client.listGediPresets({ group: 'swap' });
+   * const preset = edit_presets.find((p) => p.id === 'swap-product')!;
+   * await client.createVideoGeneration({
+   *   model: 'video.seedance_2_5',
+   *   task: preset.task,                       // 'editing'
+   *   prompt: preset.prompt,
+   *   reference_video_urls: ['https://…/ad-cut.mp4'],   // @Video1
+   *   reference_image_urls: ['https://…/new-bottle.png'] // @Image1
+   * });
+   * ```
+   * An editing run follows the source clip, so omit `aspect_ratio` and `duration`.
+   */
+  listGediPresets(
+    params: { group?: GediEditGroup | string } = {},
+    signal?: AbortSignal
+  ): Promise<GediPresets> {
+    const query = params.group ? { group: params.group } : undefined;
+    return this.request<GediPresets>('GET', '/videos/gedi/presets', { query, signal });
+  }
+
+  /**
+   * The curated Motion Library — reference clips whose motion can be
+   * transferred onto your own character or product. Free; an empty array when
+   * nothing is published yet. Bring your own clip instead whenever you have one.
+   */
+  async listGediMotionLibrary(
+    params: { limit?: number } = {},
+    signal?: AbortSignal
+  ): Promise<GediMotion[]> {
+    const query = params.limit !== undefined ? { limit: params.limit } : undefined;
+    const response = await this.request<ListResponse<GediMotion>>('GET', '/videos/gedi/motion-library', { query, signal });
+    return response.data;
   }
 
   createLipsyncGeneration(input: CreateLipsyncGenerationRequest, options: RequestOptions = {}): Promise<Run> {
@@ -3215,6 +4278,322 @@ export class GenFireClient {
     return this.request<AdResearch>('GET', `/ads/research/${encodeURIComponent(researchId)}`, { signal });
   }
 
+  // ── Media inspection ────────────────────────────────────────────────────────
+
+  /**
+   * MEASURE a media file: duration, coded and display dimensions, fps, streams
+   * and codecs. Free, synchronous, and not a generation.
+   *
+   * Reach for it before trimming, composing or lip-syncing: a REQUESTED
+   * duration is not a measured one — an 8s video request often lands at 6.4s —
+   * and every timing built on the request rather than the measurement is off by
+   * that difference. Takes an https URL, an upload `asset_url`, or a past run
+   * id. An unreadable source is a 422 `media_unreadable` carrying ffprobe's own
+   * reason.
+   */
+  inspectMedia(input: InspectMediaRequest, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<MediaInspection> {
+    return this.request<MediaInspection>('POST', '/media/inspect', {
+      body: input,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Website captures ────────────────────────────────────────────────────────
+
+  /**
+   * Screenshot a LIVE web page in a real headless browser. FREE. Async —
+   * returns a queued run; poll {@link waitForRun}, then read
+   * `output.shots[].url` along with the capture's provenance (`final_url`
+   * after redirects, `captured_at`, the page title).
+   *
+   * Real pixels, never a stand-in: a page that will not render FAILS the run
+   * with a typed code (`capture_unavailable`, `navigation_failed`) rather than
+   * handing back something plausible.
+   */
+  createCapture(input: CreateCaptureRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/captures', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Voice conversion ────────────────────────────────────────────────────────
+
+  /**
+   * Re-voice EXISTING audio: keeps the performance — timing, phrasing, pauses,
+   * emphasis — and changes only the speaker. It never changes the WORDS; for
+   * new wording use {@link createSpeech}, which re-performs them and loses the
+   * take. Billed per second of the source, 5-minute cap. Synchronous.
+   */
+  createVoiceConversion(input: CreateVoiceConversionRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/audio/voice-conversions', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Compose ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Cut clips you have already generated into ONE finished video — the
+   * assembly step, and the only call that concatenates media. FREE: nothing
+   * generates, and the clips were billed when they were made.
+   *
+   * Two ways to place audio, and they compose. PER CLIP (`clips[].audio_url`)
+   * is the line that belongs to a scene: it moves with that scene through
+   * every trim and crossfade, so you never compute an offset. ABSOLUTE
+   * (`audio[]`) pins a track to the finished timeline — narration spanning
+   * scenes, a music bed at `volume: 0.15, loop: true`, a stinger on a beat.
+   *
+   * Captions are free and burned on. By default the words are TRANSCRIBED from
+   * the cut's own audio — a guess at what was said. If you wrote the lines,
+   * pass `captions.text` and the server force-aligns your transcript, so the
+   * screen carries the exact wording; pass `captions.words` instead when you
+   * already hold timings. The two are mutually exclusive and both are part of
+   * the request fingerprint, so changing either renders a new cut.
+   *
+   * Async — poll {@link waitForRun}. `output.clips` reports where each scene
+   * actually LANDED after trims, holds and crossfades.
+   */
+  composeVideo(input: ComposeVideoRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/videos/compose', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Timelines ───────────────────────────────────────────────────────────────
+
+  /**
+   * Store a re-renderable EDIT — the half {@link composeVideo} does not have.
+   * compose assembles clips end to end and has no vocabulary for two things on
+   * screen at once; a timeline says "this logo sits at 62% width, 8% height, at
+   * 40% scale, rotated 3°, from 2.0s to 6.5s, above the footage", stores it,
+   * and lets you patch and render it again.
+   *
+   * `sources[]` names each piece of media once and is stored as the REF, not a
+   * resolved URL — a signed upload link expires and a run's output URL is
+   * re-minted, so a render months later re-resolves rather than 403ing. Every
+   * source is probed BEFORE the timeline exists: an unreadable one is a 422
+   * `media_unreadable` naming the first clip that depends on it, not a render
+   * that dies three minutes in. FREE.
+   */
+  createTimeline(input: CreateTimelineRequest, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<Timeline> {
+    return this.request<Timeline>('POST', '/videos/timelines', {
+      body: input,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Read a stored timeline: its full manifest and its current `rev`. Call this
+   * before {@link updateTimeline} — the rev is the optimistic-concurrency
+   * token, and a patch without the current one is refused rather than quietly
+   * overwriting another agent's edit.
+   */
+  getTimeline(timelineId: string, signal?: AbortSignal): Promise<Timeline> {
+    return this.request<Timeline>('GET', `/videos/timelines/${encodeURIComponent(timelineId)}`, { signal });
+  }
+
+  /**
+   * Replace a timeline's manifest. This is a WHOLE-manifest replace, not a
+   * merge: a partial clip list is ambiguous the moment clips are reordered or
+   * removed, and you already hold the whole manifest from the read that told
+   * you the rev. So {@link getTimeline}, change what you need, send it back.
+   *
+   * `rev` is required — it travels as `If-Match`. Omitting it is a 428; a stale
+   * one is a 409 (re-read and re-apply). Sources are re-probed. Free.
+   */
+  updateTimeline(timelineId: string, input: UpdateTimelineRequest, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<Timeline> {
+    const { rev, ...manifest } = input;
+    return this.request<Timeline>('PATCH', `/videos/timelines/${encodeURIComponent(timelineId)}`, {
+      body: { ...manifest, rev },
+      signal: options.signal,
+      headers: { 'If-Match': String(rev), ...(options.headers || {}) }
+    });
+  }
+
+  /**
+   * Render a revision. `preview` (the default) is the SAME compositor at 480p
+   * on the short edge — an honest proxy for the final, not a second renderer
+   * that can disagree with it — and its bytes are cached by manifest content,
+   * so looking at an unchanged revision twice costs one pass and the second
+   * run reports `output.cached`. FREE either way.
+   *
+   * Renders are runs keyed on the revision, so re-rendering an unchanged one
+   * dedupes onto the earlier run and a patched manifest is a new one. The
+   * render inherits the timeline's project and workspace; neither is named
+   * here. Async — poll {@link waitForRun}.
+   */
+  renderTimeline(timelineId: string, input: RenderTimelineRequest = {}, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', `/videos/timelines/${encodeURIComponent(timelineId)}/renders`, {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Every render of one timeline, newest first, each carrying its `rev` and mode. */
+  listTimelineRenders(timelineId: string, params: { limit?: number } = {}, signal?: AbortSignal): Promise<ListResponse<Run>> {
+    return this.request<ListResponse<Run>>('GET', `/videos/timelines/${encodeURIComponent(timelineId)}/renders`, {
+      query: { limit: params.limit },
+      signal
+    });
+  }
+
+  // ── Presets ─────────────────────────────────────────────────────────────────
+
+  /**
+   * The published preset library: ready-made multi-step pipelines, runnable by
+   * name. Free. Reach for one before assembling the same chain by hand.
+   */
+  listPresets(signal?: AbortSignal): Promise<ListResponse<Preset>> {
+    return this.request<ListResponse<Preset>>('GET', '/presets', { signal });
+  }
+
+  /**
+   * One preset in full: the flat `inputs[]` list {@link runPreset}'s `inputs`
+   * is built from, the cost at defaults, and the unlock price if it is paid.
+   * Build the inputs object from THIS — an unknown key is a 400 that names it,
+   * and an ambiguous one wants the full `"<node_id>.<param>"` form.
+   */
+  getPreset(presetId: string, signal?: AbortSignal): Promise<Preset> {
+    return this.request<Preset>('GET', `/presets/${encodeURIComponent(presetId)}`, { signal });
+  }
+
+  /**
+   * Price a published preset BEFORE running it — the exact number
+   * {@link runPreset} will charge, from the same estimator the run uses, with
+   * a per-node breakdown. Free, and it creates nothing: no copy of the preset
+   * is instantiated and no credits are held, so a caller who has never run
+   * this preset is quoted the same as one who has run it ten times.
+   *
+   * Returns a `quote_token` and the `preset_rev` it priced. Pass the token to
+   * {@link runPreset} to be charged the number the user was shown; if the
+   * inputs or the preset's own revision moved in between, the run answers 409
+   * `quote_mismatch` carrying a fresh quote rather than a surprise price.
+   *
+   * A PAID preset answers 402 `preset_purchase_required` here too — a quote is
+   * never issued for a preset the caller could not actually run. Unlocking is
+   * a WRITE, so there is no `confirm_purchase` on this call; it belongs on
+   * {@link runPreset}.
+   */
+  estimatePreset(presetId: string, input: EstimatePresetRequest = {}, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<PresetCostEstimate> {
+    return this.request<PresetCostEstimate>('POST', `/presets/${encodeURIComponent(presetId)}/estimate`, {
+      body: input,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Run a published preset with your own inputs.
+   *
+   * Async, and NOT on {@link waitForRun}: a preset run is a CANVAS run, filed
+   * under the copy this call instantiates. Poll
+   * {@link getUserWorkflowRun} with the `workflowId` AND `runId` the 202
+   * carries — {@link getRun} reads the flat run collection and answers 404
+   * `run_not_found` for it.
+   *
+   * A PAID preset bills twice over: the first call returns 402
+   * `preset_purchase_required` carrying the unlock price, and you retry with
+   * `confirm_purchase: true`. That unlock is ONE TIME — later runs are free of
+   * it. Running a preset never touches the author's published graph: your own
+   * copy is instantiated once and reused.
+   *
+   * Price it with {@link estimatePreset} first and pass that call's
+   * `quote_token`, so the user is charged the number they were shown.
+   */
+  runPreset(presetId: string, input: RunPresetRequest = {}, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<PresetRun> {
+    return this.request<PresetRun>('POST', `/presets/${encodeURIComponent(presetId)}/runs`, {
+      body: input,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Canvas workflows ────────────────────────────────────────────────────────
+
+  /**
+   * Price one of the account's OWN canvas workflows without running it. Free,
+   * creates nothing, charges nothing.
+   *
+   * The number comes from the same estimator the run itself calls, so a quote
+   * and the run that follows cannot disagree. The breakdown is per node and
+   * marks the ones already `cached` (free to re-run). Returns a `quote_token`
+   * to pass back on the submit, and the `workflow_rev` it priced — an edit to
+   * the canvas between quote and run is then caught rather than silently
+   * repriced.
+   */
+  estimateUserWorkflow(workflowId: string, input: EstimateUserWorkflowRequest = {}, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<WorkflowCostEstimate> {
+    return this.request<WorkflowCostEstimate>('POST', `/user-workflows/${encodeURIComponent(workflowId)}/estimate`, {
+      body: input,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Run one of the account's OWN canvas workflows — the submit half of
+   * {@link estimateUserWorkflow}. BILLS CREDITS.
+   *
+   * Quote it first, show the user the number, then pass that quote's
+   * `quote_token` here so they are charged what they agreed to rather than the
+   * live price. The whole page runs unless `selected_node_ids` narrows it to
+   * those nodes and their dependencies — the way to redo one branch without
+   * re-paying for the rest. Nodes whose inputs have not changed are cached and
+   * cost nothing either way; the estimate marks them.
+   *
+   * Async: the 202 carries `runId` and `totalCostCredits`, and this method
+   * echoes the `workflowId` onto it. Poll {@link getUserWorkflowRun} with both
+   * — a canvas run is addressed under its workflow, so {@link getRun} reads the
+   * flat run collection and answers 404 `run_not_found` for it.
+   *
+   * NOT {@link runWorkflow}, which runs a PUBLISHED workflow by key. Same noun
+   * to a user, two collections underneath.
+   */
+  async runUserWorkflow(workflowId: string, input: RunUserWorkflowRequest = {}, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<UserWorkflowRun> {
+    const run = await this.request<Omit<UserWorkflowRun, 'workflowId'> & { workflowId?: string }>(
+      'POST',
+      `/user-workflows/${encodeURIComponent(workflowId)}/runs`,
+      {
+        body: input,
+        signal: options.signal,
+        headers: options.headers
+      }
+    );
+    // The 202 does not carry the workflow id — but the run cannot be READ
+    // without it (a canvas run is addressed under its workflow), so a caller
+    // handed only this object would have nothing to poll with. Echoed from the
+    // argument, and a server-supplied value wins if the route ever adds one.
+    return { workflowId, ...run };
+  }
+
+  /**
+   * One canvas run node by node: every executed node with its own status,
+   * error and output, the `workflowRev` that ran, and the results split into
+   * `deliverables` and `intermediates`. Free.
+   *
+   * A run is addressed UNDER its workflow, so both ids are required — the
+   * workflow read is also the access gate.
+   */
+  getUserWorkflowRun(workflowId: string, runId: string, signal?: AbortSignal): Promise<UserWorkflowRunStatus> {
+    return this.request<UserWorkflowRunStatus>(
+      'GET',
+      `/user-workflows/${encodeURIComponent(workflowId)}/runs/${encodeURIComponent(runId)}`,
+      { signal }
+    );
+  }
+
   // ── Usage ───────────────────────────────────────────────────────────────────
 
   /**
@@ -3227,7 +4606,8 @@ export class GenFireClient {
         start_date: params.start_date,
         end_date: params.end_date,
         group_by: params.group_by,
-        capability: params.capability
+        capability: params.capability,
+        team_id: params.team_id
       },
       signal
     });
