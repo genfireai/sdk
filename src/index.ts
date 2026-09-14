@@ -2418,7 +2418,8 @@ export interface CreateVoiceConversionRequest extends TeamBillable, ProjectFilea
   audio_url: string;
   /** Target speaker, from {@link GenFireClient.listVoices}. */
   voice_id: string;
-  /** Defaults to the ElevenLabs voice-changer model. */
+  /** ElevenLabs speech-to-speech model id. Defaults to `eleven_multilingual_sts_v2`,
+   *  Genfire's choice; the ElevenLabs API's own default is `eleven_english_sts_v2`. */
   model?: string;
   /** Strip room tone and background noise from the source first. */
   remove_background_noise?: boolean;
