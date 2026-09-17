@@ -227,8 +227,27 @@ export interface PricingEntry {
 }
 
 export interface EstimateCostRequest {
-  /** Model alias from listModels(), e.g. 'video.seedance_2_0'. Required. */
-  model: string;
+  /** Model alias; optional when a marketing template selects its model. */
+  model?: string;
+  marketing_template_id?: string;
+  marketing_format_id?: string;
+  marketing_hook_id?: string;
+  marketing_setting_id?: string;
+  product_image_url?: string;
+  avatar_image_url?: string;
+  product_id?: string;
+  avatar_id?: string;
+  reference_video_urls?: string[];
+  reference_audio_urls?: string[];
+  reference_video_trims?: Array<{ index: number; start: number; end: number }>;
+  task?: 'reference' | 'editing' | 'extension';
+  loras?: Array<{ id: string; scale?: number }>;
+  keyframes?: Array<{ image_url: string; frame_index: number }>;
+  draft_cache_url?: string;
+  video_trim_start?: number;
+  video_trim_duration?: number;
+  dialogue?: Array<{ text: string; voice_id: string }>;
+  composition_plan?: Record<string, unknown>;
   // Video
   resolution?: string;
   duration?: number;
@@ -1795,6 +1814,23 @@ export interface UpdateWebhookRequest {
   events?: WebhookEventType[];
 }
 
+export interface RuntimeWorkspace {
+  object:'runtime_workspace'; id:string; name:string; kind:'media'|'scene'|'app'; rev:number;
+  active_operation_id:string|null; last_operation_id:string|null; created_at:string; updated_at:string;
+}
+export interface RuntimeOperation {
+  object:'runtime_operation'; id:string; workspace_id:string;
+  status:'queued'|'running'|'dispatch_uncertain'|'succeeded'|'failed'|'timed_out';
+  base_rev:number; committed_rev:number|null; created_at:string; finished_at:string|null;
+  result?:{stdout?:string;stderr?:string;exit_code?:number|null;timed_out?:boolean;truncated?:boolean;error?:string;files?:Array<{path:string;bytes:number;sha256:string}>};
+}
+export interface RuntimeExecutionRequest {
+  rev:number; command:string; files?:Array<{path:string;content:string}>; timeout_ms?:number; commit?:boolean;
+}
+export interface RuntimeArtifact {object:'runtime_artifact';path:string;bytes:number;sha256:string;url:string;expires_in_seconds:number;text?:string}
+export interface RuntimeCapabilities {object:'runtime_capabilities';available:boolean;engines:string[];max_workspace_bytes:number;max_files:number;max_command_seconds:number}
+export interface FullstackApplication {object:'fullstack_application';workspace_id:string;status:'deploying'|'deployed'|'failed';url:string|null;deployed_rev:number|null;operation_id:string|null;error:string|null;updated_at:string}
+
 export interface WaitForRunOptions {
   intervalMs?: number;
   timeoutMs?: number;
@@ -2114,6 +2150,17 @@ export interface DocumentEditResult extends DocumentMutationResult {
 
 // ── Skills ────────────────────────────────────────────────────────────────────
 
+export interface SkillSummary {
+  id: string; object: 'skill'; title: string; slug: string | null;
+  description: string | null; category: string | null; version: string | null;
+  source: string | null; is_public: boolean; installs?: number;
+  content_hash: string; file_count: number;
+}
+export interface SkillDetail extends SkillSummary {
+  content: string; files: Array<{ path: string; size_bytes: number }>;
+}
+export interface SkillReference extends SkillSummary { path: string; content: string; size_bytes: number; }
+
 export interface SkillFile {
   path: string;
   content: string;
@@ -2358,6 +2405,19 @@ export interface PriceQuote {
 
 // ── Media inspection ──────────────────────────────────────────────────────────
 
+export interface ExtractVideoFramesRequest {
+  video_url: string;
+  times?: number[];
+  width?: number;
+  contact_sheet?: boolean;
+}
+export interface VideoFrames {
+  object: 'video_frames';
+  duration: number;
+  frames: Array<{ time:number; url:string; width:number; height:number }>;
+  contact_sheet: { url:string; width:number; height:number } | null;
+}
+
 export interface InspectMediaRequest {
   /** An https URL, an upload `asset_url`, or a past run id (`run_…`). */
   url: string;
@@ -2415,7 +2475,9 @@ export interface CreateCaptureRequest extends ProjectFileable {
 
 export interface CreateVoiceConversionRequest extends TeamBillable, ProjectFileable {
   /** The performance to re-voice. https URL or an upload `asset_url`. */
-  audio_url: string;
+  audio_url?: string;
+  /** Supply video_url OR audio_url. Returns output.video_url with the original picture and converted soundtrack. Requires videos:write as well as audio:write. */
+  video_url?: string;
   /** Target speaker, from {@link GenFireClient.listVoices}. */
   voice_id: string;
   /** ElevenLabs speech-to-speech model id. Defaults to `eleven_multilingual_sts_v2`,
@@ -2843,6 +2905,11 @@ export interface TimelineManifest {
   /** `version: 2` only. Absent on every v1 manifest. */
   graphics?: TimelineGraphics;
 }
+
+export type TimelineOperation =
+  | { op: 'add' | 'update' | 'remove'; target: 'clip' | 'source' | 'layer'; id: string; value?: Record<string, unknown> }
+  | { op: 'frame'; value: { width?: number; height?: number; fps?: number; duration?: number } };
+export interface PatchTimelineRequest { rev: number; operations: TimelineOperation[]; }
 
 export interface Timeline {
   id: string;
@@ -3413,6 +3480,16 @@ export class GenFireClient {
 
   getRunOutput(runId: string, signal?: AbortSignal): Promise<RunOutput> {
     return this.request<RunOutput>('GET', `/runs/${encodeURIComponent(runId)}/output`, { signal });
+  }
+
+  /** Wait concurrently, keeping completed results if another run cannot be read. */
+  async waitForRuns(runIds:string[],options:WaitForRunOptions={}):Promise<{runs:Run[];errors:Array<{run_id:string;message:string}>}> {
+    if(!runIds.length||runIds.length>8)throw new Error('Choose 1–8 runs.');
+    const ids=[...new Set(runIds)];
+    const settled=await Promise.allSettled(ids.map(id=>this.waitForRun(id,options)));
+    const runs:Run[]=[],errors:Array<{run_id:string;message:string}>=[];
+    settled.forEach((result,index)=>{if(result.status==='fulfilled')runs.push(result.value);else errors.push({run_id:ids[index],message:String(result.reason?.message||result.reason)})});
+    return {runs,errors};
   }
 
   async waitForRun(runId: string, options: WaitForRunOptions = {}): Promise<Run> {
@@ -4119,6 +4196,19 @@ export class GenFireClient {
 
   // ── Skills ──────────────────────────────────────────────────────────────────
 
+  /** Metadata-only, bounded discovery. Read a matching skill separately. */
+  listSkillSummaries(options: { scope?: 'mine' | 'market'; after?: string; limit?: number } = {}, signal?: AbortSignal): Promise<ListResponse<SkillSummary>> {
+    const query = new URLSearchParams({ view: 'summary', limit: String(options.limit ?? 20) });
+    if (options.after) query.set('after', options.after);
+    return this.request('GET', `/skills${options.scope === 'market' ? '/market' : ''}?${query}`, { signal });
+  }
+  getSkill(skillId: string, signal?: AbortSignal): Promise<SkillDetail> {
+    return this.request('GET', `/skills/${encodeURIComponent(skillId)}`, { signal });
+  }
+  getSkillFile(skillId: string, path: string, signal?: AbortSignal): Promise<SkillReference> {
+    return this.request('GET', `/skills/${encodeURIComponent(skillId)}?file=${encodeURIComponent(path)}`, { signal });
+  }
+
   /** List the skills installed in this account. Free. */
   listSkills(signal?: AbortSignal): Promise<ListResponse<Skill>> {
     return this.request<ListResponse<Skill>>('GET', '/skills', { signal });
@@ -4300,6 +4390,31 @@ export class GenFireClient {
     });
   }
 
+  /** Extract actual frames and a labeled contact sheet from a completed video. */
+  extractVideoFrames(input: ExtractVideoFramesRequest, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<VideoFrames> {
+    return this.request<VideoFrames>('POST', '/media/frames', { body:input, signal:options.signal, headers:options.headers });
+  }
+
+  getRuntime():Promise<RuntimeCapabilities> {return this.request('GET','/runtime')}
+  createWorkspace(input:{name:string;kind?:'media'|'scene'|'app'}):Promise<RuntimeWorkspace> {return this.request('POST','/runtime/workspaces',{body:input})}
+  getWorkspace(id:string):Promise<RuntimeWorkspace> {return this.request('GET',`/runtime/workspaces/${encodeURIComponent(id)}`)}
+  listWorkspaces():Promise<ListResponse<RuntimeWorkspace>> {return this.request('GET','/runtime/workspaces')}
+  executeWorkspace(id:string,input:RuntimeExecutionRequest,options:RequestOptions & {idempotencyKey:string}):Promise<RuntimeOperation> {return this.request('POST',`/runtime/workspaces/${encodeURIComponent(id)}/operations`,{body:input,...options})}
+  getOperation(id:string,signal?:AbortSignal):Promise<RuntimeOperation> {return this.request('GET',`/runtime/operations/${encodeURIComponent(id)}`,{signal})}
+  getArtifact(id:string,path:string):Promise<RuntimeArtifact> {return this.request('GET',`/runtime/operations/${encodeURIComponent(id)}/artifacts`,{query:{path}})}
+  async waitForOperation(id:string,options:WaitForRunOptions={}):Promise<RuntimeOperation> {
+    const deadline=Date.now()+(options.timeoutMs??20*60*1000);
+    while(true){const operation=await this.getOperation(id,options.signal);if(['succeeded','failed','timed_out'].includes(operation.status))return operation;
+      if(Date.now()>=deadline)throw new Error(`Timed out waiting for operation ${id}.`);
+      await sleep(Math.min(options.intervalMs??2000,deadline-Date.now()),options.signal);
+    }
+  }
+  editBlenderScene(id:string,input:{rev:number;code:string;mode?:'edit'|'query';preview?:boolean;timeout_ms?:number},options:RequestOptions & {idempotencyKey:string}):Promise<RuntimeOperation> {return this.request('POST',`/runtime/scenes/${encodeURIComponent(id)}/operations`,{body:input,...options})}
+  deployFullstackApp(id:string,input:{operation_id:string;rev:number;worker_entry:string;modules_dir:string;assets_dir?:string},options:RequestOptions & {idempotencyKey:string}):Promise<FullstackApplication> {return this.request('POST',`/runtime/apps/${encodeURIComponent(id)}/deployments`,{body:input,...options})}
+  getFullstackApp(id:string):Promise<FullstackApplication> {return this.request('GET',`/runtime/apps/${encodeURIComponent(id)}`)}
+  listAppSecrets(id:string):Promise<ListResponse<{name:string;type:string}>> {return this.request('GET',`/runtime/apps/${encodeURIComponent(id)}/secrets`)}
+  queryAppDatabase(id:string,input:{sql:string;params?:Array<string|number|null>}):Promise<{object:'database_query';data:unknown}> {return this.request('POST',`/runtime/apps/${encodeURIComponent(id)}/query`,{body:input})}
+
   // ── Website captures ────────────────────────────────────────────────────────
 
   /**
@@ -4402,6 +4517,13 @@ export class GenFireClient {
    */
   getTimeline(timelineId: string, signal?: AbortSignal): Promise<Timeline> {
     return this.request<Timeline>('GET', `/videos/timelines/${encodeURIComponent(timelineId)}`, { signal });
+  }
+
+  /** Targeted edits preserve unnamed entities. A stale rev returns 409. */
+  patchTimeline(timelineId: string, input: PatchTimelineRequest, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<Timeline> {
+    return this.request<Timeline>('PATCH', `/videos/timelines/${encodeURIComponent(timelineId)}`, {
+      body: input, signal: options.signal, headers: { ...options.headers, 'If-Match': String(input.rev) },
+    });
   }
 
   /**
