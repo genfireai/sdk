@@ -776,7 +776,14 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
 }
 
 export interface CreateLipsyncGenerationRequest extends TeamBillable, ProjectFileable, Quotable {
-  video_url: string;
+  /** Source video. Required for every model except the photo-input `lipsync.h3_max_lipsync`. */
+  video_url?: string;
+  /** Photo to animate. Required for (and only accepted by) `lipsync.h3_max_lipsync`. */
+  image_url?: string;
+  /** `lipsync.h3_max_lipsync` only. Default `768P`; `1080P` bills 2x, `2K` 4x. */
+  resolution?: '480P' | '768P' | '1080P' | '2K';
+  /** `lipsync.h3_max_lipsync` only: transcribe the audio to guide the mouth shapes. */
+  enable_transcription?: boolean;
   audio_url?: string;
   audio_base64?: string;
   audio_file_name?: string;
