@@ -883,7 +883,7 @@ export interface CreateMusicRequest extends TeamBillable, ProjectFileable, Quota
   /**
    * Desired length in seconds. ElevenLabs prompt mode: 3–600 (default 30).
    * MiniMax Music 3: an upper BOUND of 1–300 (default 60) that billing is
-   * charged on — the track may come in shorter. Lyria 3 Pro ignores it.
+   * charged on — the track may come in shorter. Lyria (3.5 / 3 Pro) ignores it — steer length in the prompt.
    */
   duration_seconds?: number;
   include_details?: boolean;
@@ -898,16 +898,16 @@ export interface CreateMusicRequest extends TeamBillable, ProjectFileable, Quota
    */
   seed?: number;
   output_format?: string;
-  /** Image URL used as inspiration for the generated music. Lyria 3 Pro only. */
+  /** Image URL used as inspiration for the generated music. Lyria 3.5 / 3 Pro only. */
   image_url?: string;
-  /** Description of what to exclude from the generated audio. Lyria 3 Pro only. */
+  /** @deprecated No music model supports negative prompting (both Lyria models reject it); ignored. */
   negative_prompt?: string;
   /**
    * The lyrics to sing. REQUIRED for music.minimax_music_3 — that model writes
    * none of its own. Structure tags ([intro], [verse], [pre-chorus], [chorus],
    * [post-chorus], [bridge], [instrumental], [solo], [outro]) must each be on
    * their own line; Genfire re-splits a tag sharing a line with lyric text so
-   * nothing is silently dropped. Ignored by ElevenLabs and Lyria 3 Pro.
+   * nothing is silently dropped. Ignored by ElevenLabs and both Lyria models.
    */
   lyrics?: string;
   /** Flow-matching Euler steps per 8s chunk, 1–100 (default 30). MiniMax Music 3 only. */
