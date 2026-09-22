@@ -203,6 +203,12 @@ export interface ModelCapabilities {
   video_task?: boolean;
   /** The schema declares `bitrate_mode` (`standard` | `high`). */
   bitrate_mode?: boolean;
+  /**
+   * H3 Max Styles: accepts `video_style` (required there) and, on the `vhs`
+   * look, `damage_level`. The legal values are the model's
+   * `limits.video_styles` / `limits.damage_levels`.
+   */
+  video_styles?: boolean;
 }
 
 export interface Model {
@@ -773,7 +779,31 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * Pre-written prompts for both modes: {@link GenFireClient.listGediPresets}.
    */
   task?: 'reference' | 'editing' | 'extension';
+  /**
+   * H3 Max Styles (`video.hailuo_03_max_styles`) only — and REQUIRED there
+   * (400 `video_style_required`): the baked-in look the prompt is rendered in.
+   * `vhs` camcorder tape, `retro_toon_70s` 1970s cel animation, `low_poly`
+   * flat-shaded retro 3D, `hand_drawn` pencil animation, `16bit_pixel` pixel
+   * art. Any other model is a 400 `unsupported_video_style`.
+   */
+  video_style?: VideoStyle;
+  /**
+   * With `video_style: 'vhs'` only: how worn the tape looks. Omit for the
+   * model default (`'medium'`); any other style or model is a 400
+   * `unsupported_damage_level`.
+   */
+  damage_level?: VideoDamageLevel;
 }
+
+/**
+ * H3 Max Styles looks. Mirrors the backend seam
+ * (backend/src/lib/models/h3MaxStyles.ts, H3_MAX_STYLE_IDS), which this
+ * package cannot import — change them together.
+ */
+export type VideoStyle = 'vhs' | 'retro_toon_70s' | 'low_poly' | 'hand_drawn' | '16bit_pixel';
+
+/** VHS tape wear for `video_style: 'vhs'` (H3_MAX_DAMAGE_LEVELS in the same seam). */
+export type VideoDamageLevel = 'light' | 'medium' | 'heavy';
 
 export interface CreateLipsyncGenerationRequest extends TeamBillable, ProjectFileable, Quotable {
   /** Source video. Required for every model except the photo-input `lipsync.h3_max_lipsync`. */
