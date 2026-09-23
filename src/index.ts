@@ -693,7 +693,7 @@ export interface CreateGameGenerationRequest {
   prompt: string;
   /** Iterate on an existing game: its `game_id` from a prior generation. Re-generates in place at the same `play_url`. */
   game_id?: string;
-  /** Codegen model alias (e.g. `claude-opus-5-5`). Defaults to Opus. */
+  /** Codegen model alias (e.g. `claude-opus-5-5`, `gpt-6-sol`). Defaults to `claude-fable-5-1`. */
   model?: string;
   /** Up to 16 asset URLs (images / GLB / audio) to wire into the game. */
   asset_urls?: string[];
