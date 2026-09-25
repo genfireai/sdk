@@ -2666,6 +2666,58 @@ export interface TimelineClip {
   textStyle?: TimelineTextStyle;
   watermarkOpacity?: number;
   previewContainerWidth?: number;
+  /**
+   * `video`/`audio` only. Playback rate, 0.25-4 (default 1). `duration` stays
+   * TIMELINE seconds, so the clip plays `duration × speed` seconds of source
+   * from `sourceStartTime`; its audio is time-stretched to match.
+   */
+  speed?: number;
+  /** `video`/`image` only (dropped on text). Keyframed zoom and pan on top of `layout`. */
+  motion?: TimelineClipMotion;
+}
+
+/**
+ * One motion keyframe. Not a graphics keyframe: `t` is seconds from the CLIP's
+ * own start on the timeline (clamped to its duration), not composition time.
+ */
+export interface TimelineMotionKeyframe {
+  t: number;
+  /** MULTIPLIES `layout.scale`. Clamped to {@link TIMELINE_MOTION_LIMITS}. */
+  scale: number;
+  /** Percent of frame from centre, ADDED to `layout.x`. */
+  x?: number;
+  /** Percent of frame from centre, ADDED to `layout.y`. */
+  y?: number;
+  /** The segment ARRIVING at this keyframe. Default linear. */
+  ease?: GraphicsEase;
+}
+
+/** A crash zoom is two keyframes: `{ t: 0, scale: 1 }` → `{ t: 0.4, scale: 1.8, ease: 'power2.in' }`. */
+export interface TimelineClipMotion {
+  /** At most {@link TIMELINE_MOTION_LIMITS}.maxKeyframes; sorted by `t` on write. */
+  keyframes: TimelineMotionKeyframe[];
+  /** 0-1: blur while the frame moves. 0 / absent = off. */
+  motionBlur?: number;
+}
+
+/** The bounds the API clamps motion into (it clamps, never 400s). */
+export const TIMELINE_MOTION_LIMITS = { maxKeyframes: 16, minScale: 0.2, maxScale: 4, maxOffset: 100 } as const;
+
+/**
+ * Whole-film looks. `dvd_35mm` is the house look: SD softness, compression
+ * smear, warm-neutral curves with lifted blacks, highlight bloom, a soft
+ * vignette and moving film grain.
+ */
+export const FINISH_PRESETS = ['none', 'dvd_35mm', 'camcorder', 'flash_editorial'] as const;
+export type FinishPreset = (typeof FINISH_PRESETS)[number];
+
+/** A look graded over the film's footage; text, captions and graphics sit on top ungraded. */
+export interface TimelineFinish {
+  preset: FinishPreset;
+  /** 0-1. Default 1. */
+  intensity?: number;
+  /** 0-1. Default 0.5. */
+  grain?: number;
 }
 
 /** A source as the CALLER declares it. Stored as the ref, never a resolved URL. */
@@ -2941,11 +2993,15 @@ export interface TimelineManifest {
   sources: TimelineSource[];
   /** `version: 2` only. Absent on every v1 manifest. */
   graphics?: TimelineGraphics;
+  /** Stored with `intensity` and `grain` filled in. Absent when no look is set. */
+  finish?: Required<TimelineFinish>;
 }
 
 export type TimelineOperation =
   | { op: 'add' | 'update' | 'remove'; target: 'clip' | 'source' | 'layer'; id: string; value?: Record<string, unknown> }
-  | { op: 'frame'; value: { width?: number; height?: number; fps?: number; duration?: number } };
+  | { op: 'frame'; value: { width?: number; height?: number; fps?: number; duration?: number } }
+  /** Merged onto the current finish (a preset is required if none is set); `null` removes it. */
+  | { op: 'finish'; value: Partial<TimelineFinish> | null };
 export interface PatchTimelineRequest { rev: number; operations: TimelineOperation[]; }
 
 export interface Timeline {
@@ -2966,7 +3022,7 @@ export interface Timeline {
 export interface TimelineManifestInput {
   /** Total length of the finished film, seconds. Must cover every clip. */
   duration: number;
-  /** Frame width in pixels, 16-3840. Stated, never derived from a preset. */
+  /** Frame width in pixels, 16-3840. Stated, never derived from a preset: 1440×1080 is 4:3, 1080×1080 is 1:1. */
   width: number;
   /** Frame height in pixels, 16-3840. */
   height: number;
@@ -2983,6 +3039,8 @@ export interface TimelineManifestInput {
    * takes the timeline back to v1.
    */
   graphics?: TimelineGraphics;
+  /** The whole-film look. Replaces whole on update: omitting it removes the look. */
+  finish?: TimelineFinish;
   title?: string;
 }
 
