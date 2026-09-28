@@ -840,16 +840,21 @@ export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quot
    */
   voice_id?: string;
   /**
-   * Text to Dialogue (`speech.elevenlabs_dialogue_v3`, implied when present):
+   * Text to Dialogue (`speech.elevenlabs_dialogue_v3`, implied when present;
+   * pass `model: 'speech.elevenlabs_dialogue_v4'` for Eleven v4):
    * ordered multi-speaker lines rendered as ONE file with matched prosody.
-   * ≤10 distinct voices, ≤2000 characters total; v3 audio tags allowed.
+   * ≤10 distinct voices, ≤2000 characters total; audio tags allowed.
    * Replaces `text` + `voice_id`.
    */
   dialogue?: DialogueLine[];
-  /** Defaults to `speech.elevenlabs_flash_v2_5` (Turbo v2.5 is deprecated upstream). */
+  /**
+   * Defaults to `speech.elevenlabs_flash_v2_5` (Turbo v2.5 is deprecated upstream).
+   * `speech.elevenlabs_v4` is the most expressive (audio tags, 10,000 chars);
+   * `speech.elevenlabs_v4_turbo` is v4 at low latency and half the cost.
+   */
   model?: string;
   voice_name?: string;
-  /** ElevenLabs only — ISO 639-1 code enforced on Flash/Turbo/v3 (ignored by Multilingual v2 and cloned voices). */
+  /** ElevenLabs only — ISO 639-1 code enforced on Flash/Turbo/v3/v4 (ignored by Multilingual v2 and cloned voices). */
   language_code?: string;
   /** ElevenLabs only — best-effort reproducibility (0..4294967295). */
   seed?: number;
@@ -859,7 +864,7 @@ export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quot
   next_text?: string;
   /** ElevenLabs only — `auto` (default) | `on` | `off`. */
   apply_text_normalization?: 'auto' | 'on' | 'off';
-  /** ElevenLabs only — voice_settings overrides ({ stability, similarity_boost, style, use_speaker_boost, speed }). */
+  /** ElevenLabs only — voice_settings overrides ({ stability, similarity_boost, style, use_speaker_boost, speed }). Eleven v4 reads stability + similarity_boost only. */
   voice_settings?: { stability?: number; similarity_boost?: number; style?: number; use_speaker_boost?: boolean; speed?: number };
   /** Dialogue only — 0 | 0.5 | 1. */
   stability?: number;
@@ -896,7 +901,7 @@ export interface CreateMusicRequest extends TeamBillable, ProjectFileable, Quota
   /**
    * ElevenLabs only — keep the song server-side for inpainting. With
    * include_details the run output carries `song_id`; reference it from a later
-   * music_v2 composition_plan as `{ song_id, range: { start_ms, end_ms } }`
+   * chunks-shaped composition_plan as `{ song_id, range: { start_ms, end_ms } }`
    * chunks to keep those bars and regenerate only the others.
    */
   store_for_inpainting?: boolean;
@@ -904,11 +909,13 @@ export interface CreateMusicRequest extends TeamBillable, ProjectFileable, Quota
    * Structured composition plan instead of a prompt (ElevenLabs models only).
    * music_v1 shape: { positive_global_styles[], negative_global_styles[], sections[] }
    * (per-section styles, duration_ms 3000–120000, lyric lines).
-   * music_v2 shape: { chunks[] } (per-chunk text with [Section]/{direction} markup,
-   * duration_ms, positive_styles[]). A chunks plan implies music.elevenlabs_music_v2.
+   * music_v2 / music_v2_5 shape: { chunks[] } (per-chunk text with [Section]/{direction} markup,
+   * duration_ms, positive_styles[]). A chunks plan with no `model` runs on the
+   * default, music.elevenlabs_music_v2_5.
    * Duration and billing derive from the plan's summed durations.
    */
   composition_plan?: Record<string, unknown>;
+  /** Music model alias; omitted → music.elevenlabs_music_v2_5 (newest ElevenLabs). */
   model?: string;
   /**
    * Desired length in seconds. ElevenLabs prompt mode: 3–600 (default 30).
@@ -1226,7 +1233,7 @@ export interface MusicVideoWordTimestamp {
   end_sec: number;
 }
 
-/** Inline song generation: Genfire produces the track (ElevenLabs music_v2)
+/** Inline song generation: Genfire produces the track (ElevenLabs Music v2.5)
  *  before rendering the video. Billed as its own step. */
 export interface MusicVideoInlineSong {
   /** What the track should sound like (genre, mood, instrumentation, vocals). */
