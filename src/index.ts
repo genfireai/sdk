@@ -840,17 +840,18 @@ export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quot
    */
   voice_id?: string;
   /**
-   * Text to Dialogue (`speech.elevenlabs_dialogue_v3`, implied when present;
-   * pass `model: 'speech.elevenlabs_dialogue_v4'` for Eleven v4):
+   * Text to Dialogue (Eleven v4, `speech.elevenlabs_dialogue_v4`, implied
+   * when present; pass `model: 'speech.elevenlabs_dialogue_v3'` for v3):
    * ordered multi-speaker lines rendered as ONE file with matched prosody.
    * ≤10 distinct voices, ≤2000 characters total; audio tags allowed.
    * Replaces `text` + `voice_id`.
    */
   dialogue?: DialogueLine[];
   /**
-   * Defaults to `speech.elevenlabs_flash_v2_5` (Turbo v2.5 is deprecated upstream).
-   * `speech.elevenlabs_v4` is the most expressive (audio tags, 10,000 chars);
-   * `speech.elevenlabs_v4_turbo` is v4 at low latency and half the cost.
+   * Defaults to `speech.elevenlabs_v4_turbo` (v4 audio tags at low latency,
+   * 10,000 chars); omitted with longer text it runs on
+   * `speech.elevenlabs_flash_v2_5` (40,000 chars). `speech.elevenlabs_v4` is
+   * the most expressive. Pin Flash for `speed` (the v4 models ignore it).
    */
   model?: string;
   voice_name?: string;
@@ -866,7 +867,7 @@ export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quot
   apply_text_normalization?: 'auto' | 'on' | 'off';
   /** ElevenLabs only — voice_settings overrides ({ stability, similarity_boost, style, use_speaker_boost, speed }). Eleven v4 reads stability + similarity_boost only. */
   voice_settings?: { stability?: number; similarity_boost?: number; style?: number; use_speaker_boost?: boolean; speed?: number };
-  /** Dialogue only — 0 | 0.5 | 1. */
+  /** Dialogue only — any 0–1 on v4 (the default); v3 snaps to 0 | 0.5 | 1. */
   stability?: number;
   /** ElevenLabs only — return per-word `words` (and `voice_segments` for dialogue) in the run output. */
   with_timestamps?: boolean;
@@ -878,7 +879,7 @@ export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quot
   image_url?: string;
   /** Output sample rate in Hz (8000/16000/24000/32000/44100/48000). Seed Audio 1.0 only. */
   sample_rate?: number;
-  /** Speaking rate. ElevenLabs 0.7–1.2 (clamped); Seed Audio 1.0 0.5–2. */
+  /** Speaking rate. ElevenLabs 0.7–1.2 (clamped; ignored by the v4 models, including the default); Seed Audio 1.0 0.5–2. */
   speed?: number;
   /** Volume 0.5–2. Seed Audio 1.0 only. */
   volume?: number;
