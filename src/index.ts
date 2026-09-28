@@ -4831,3 +4831,12 @@ export class GenFireClient {
     });
   }
 }
+
+/**
+ * The brand is "Genfire", so `GenfireClient` is the name to import. The
+ * original `GenFireClient` spelling stays exported so existing code keeps
+ * working; new code and the docs use the correctly cased name.
+ */
+export const GenfireClient = GenFireClient;
+export type GenfireClient = GenFireClient;
+export type GenfireClientConfig = GenFireClientConfig;

@@ -13,9 +13,9 @@ Node 18+ is recommended. In browsers and modern runtimes, the SDK uses the globa
 ## API Key Usage
 
 ```ts
-import { GenFireClient } from '@genfire/sdk';
+import { GenfireClient } from '@genfire/sdk';
 
-const client = new GenFireClient({
+const client = new GenfireClient({
   apiKey: process.env.GENFIRE_API_KEY!,
 });
 
@@ -26,7 +26,7 @@ console.log(models.data.map((model) => model.id));
 ## OAuth Client Credentials
 
 ```ts
-import { GenFireClient, createOAuthAccessToken } from '@genfire/sdk';
+import { GenfireClient, createOAuthAccessToken } from '@genfire/sdk';
 
 const token = await createOAuthAccessToken({
   clientId: process.env.GENFIRE_CLIENT_ID!,
@@ -34,7 +34,7 @@ const token = await createOAuthAccessToken({
   scope: 'models:read runs:read images:write',
 });
 
-const client = new GenFireClient({
+const client = new GenfireClient({
   accessToken: token.access_token,
 });
 ```
