@@ -849,9 +849,9 @@ export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quot
   dialogue?: DialogueLine[];
   /**
    * Defaults to `speech.elevenlabs_v4_turbo` (v4 audio tags at low latency,
-   * 10,000 chars); omitted with longer text it runs on
-   * `speech.elevenlabs_flash_v2_5` (40,000 chars). `speech.elevenlabs_v4` is
-   * the most expressive. Pin Flash for `speed` (the v4 models ignore it).
+   * 10,000 chars); omitted with longer text, a `speed` other than 1, or an
+   * account-cloned ElevenLabs voice it runs on `speech.elevenlabs_flash_v2_5`
+   * (40,000 chars). `speech.elevenlabs_v4` is the most expressive.
    */
   model?: string;
   voice_name?: string;
@@ -879,7 +879,7 @@ export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quot
   image_url?: string;
   /** Output sample rate in Hz (8000/16000/24000/32000/44100/48000). Seed Audio 1.0 only. */
   sample_rate?: number;
-  /** Speaking rate. ElevenLabs 0.7–1.2 (clamped; ignored by the v4 models, including the default); Seed Audio 1.0 0.5–2. */
+  /** Speaking rate. ElevenLabs 0.7–1.2 (clamped; sending speed without a model uses Flash automatically, an explicit v4 model ignores it); Seed Audio 1.0 0.5–2. */
   speed?: number;
   /** Volume 0.5–2. Seed Audio 1.0 only. */
   volume?: number;
