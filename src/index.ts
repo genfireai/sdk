@@ -793,6 +793,32 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * `unsupported_damage_level`.
    */
   damage_level?: VideoDamageLevel;
+  /**
+   * The clip to edit, extend or restyle. REQUIRED on the source-video-only
+   * models — `video.hailuo_03_max_extend`, `video.hailuo_03_max_3d` and
+   * `video.hailuo_03_max_insert` (400 `source_video_url_required` without it).
+   */
+  source_video_url?: string;
+  /**
+   * H3 Max Insert (`video.hailuo_03_max_insert`) only — and REQUIRED there with
+   * `insert_resume_time` (400 `insert_window_required`): the second of
+   * `source_video_url` where the NEW scene begins, ≥ 1.625 and ≤ 60. The run
+   * returns the whole edited clip (lead-in, new scene, then the source from
+   * the resume point); `duration` (5–13) is the new scene's length and the
+   * only seconds billed. Any other model is a 400 `unsupported_insert_window`.
+   */
+  insert_start_time?: number;
+  /**
+   * H3 Max Insert only, REQUIRED there: where the original footage picks up
+   * again — later than `insert_start_time`, ≤ 60 and before the clip ends
+   * (400 `invalid_insert_window` otherwise; the source is measured first).
+   */
+  insert_resume_time?: number;
+  /**
+   * H3 Max Insert only: grade the new scene to the source (default `true`).
+   * Any other model is a 400 `unsupported_color_match`.
+   */
+  color_match?: boolean;
 }
 
 /**
