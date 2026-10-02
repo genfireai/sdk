@@ -723,7 +723,13 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * families. Sending it to another model, or without `image_url`, is a 400.
    */
   end_image_url?: string;
-  /** Up to 9 reference images for reference-to-video mode, cited in the prompt as `Image 1`, `Image 2`, … */
+  /**
+   * Up to 9 reference images for reference-to-video mode, cited in the prompt
+   * as `Image 1`, `Image 2`, … On H3 Max Recast
+   * (`video.hailuo_03_max_recast`) they are the new CAST and REQUIRED: 1–4
+   * photos, one per person, replacing the main people in `source_video_url`
+   * left to right (400 `reference_image_urls_required` with none).
+   */
   reference_image_urls?: string[];
   /**
    * Hailuo 03 only (`video.hailuo_03`). Up to 3 reference clips, 2–15s each,
@@ -794,9 +800,16 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    */
   damage_level?: VideoDamageLevel;
   /**
-   * The clip to edit, extend or restyle. REQUIRED on the source-video-only
-   * models — `video.hailuo_03_max_extend`, `video.hailuo_03_max_3d` and
-   * `video.hailuo_03_max_insert` (400 `source_video_url_required` without it).
+   * The clip to edit, extend, restyle or recast. REQUIRED on the
+   * source-video-only models — `video.hailuo_03_max_extend`,
+   * `video.hailuo_03_max_3d`, `video.hailuo_03_max_insert` and
+   * `video.hailuo_03_max_recast` (400 `source_video_url_required` without it).
+   * H3 Max Recast keeps the clip's motion, camera, cuts and sound and swaps its
+   * people for the `reference_image_urls` photos: the clip must run 5–30 s
+   * (no single shot over 15 s), the output has its length and framing (no
+   * `duration` / `aspect_ratio`), `prompt` is optional (pass `''`) and it is
+   * billed per second of the clip as measured server-side — an unreadable
+   * clip is a 422 `source_video_unreadable`, never a guessed charge.
    */
   source_video_url?: string;
   /**
