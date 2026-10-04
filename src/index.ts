@@ -196,7 +196,7 @@ export interface ModelCapabilities {
   /** Accepts `draft_cache_url` to re-render a draft at full quality. */
   draft_enhance?: boolean;
   /**
-   * GENFIRE GEDI: the reference endpoint accepts `task` — motion transfer
+   * GENFIRE GENJUDO: the reference endpoint accepts `task` — motion transfer
    * (`reference`), video edit (`editing`) or continuation (`extension`).
    * Filter a model picker on this rather than hard-coding the alias.
    */
@@ -765,7 +765,7 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    */
   bitrate_mode?: 'standard' | 'high';
   /**
-   * GENFIRE GEDI — motion transfer and video edit. `video.seedance_2_5` only
+   * GENFIRE GENJUDO — motion transfer and video edit. `video.seedance_2_5` only
    * (`capabilities.video_task` in `listModels()`); any other model is a 400
    * `unsupported_task`.
    *
@@ -782,7 +782,7 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * `'editing'` and `'extension'` need at least one `reference_video_urls`
    * entry (400 `task_requires_reference_video` otherwise). Cite every reference
    * in the prompt — `@Video1` is the first clip, `@Image1` the first still.
-   * Pre-written prompts for both modes: {@link GenFireClient.listGediPresets}.
+   * Pre-written prompts for both modes: {@link GenFireClient.listGenjudoPresets}.
    */
   task?: 'reference' | 'editing' | 'extension';
   /**
@@ -1347,25 +1347,25 @@ export interface MusicVideoCostEstimate {
 }
 
 /** A music-video visual style preset, accepted as `style_preset_id`. */
-// ── Genfire Gedi (motion transfer & video edit) ───────────────────────────────
+// ── Genfire Genjudo (motion transfer & video edit) ───────────────────────────────
 //
 // Both halves are ONE `createVideoGeneration` call on `video.seedance_2_5` with
 // a different `task`. These two catalogs are the recipe book: prompts already
 // written in the `@Video1` / `@Image1` citation idiom the model binds on.
 
-export type GediEditGroup = 'relight' | 'swap' | 'reframe' | 'cleanup' | 'restyle' | 'draw';
+export type GenjudoEditGroup = 'relight' | 'swap' | 'reframe' | 'cleanup' | 'restyle' | 'draw';
 
-export interface GediEditGroupInfo {
-  id: GediEditGroup;
+export interface GenjudoEditGroupInfo {
+  id: GenjudoEditGroup;
   label: string;
   blurb: string;
 }
 
-export interface GediEditPreset {
+export interface GenjudoEditPreset {
   id: string;
-  object: 'gedi_edit_preset';
+  object: 'genjudo_edit_preset';
   label: string;
-  group: GediEditGroup;
+  group: GenjudoEditGroup;
   task: 'editing';
   /** Ready to send as `prompt`. Cites `@Video1`, and `@Image1` when it needs one. */
   prompt: string;
@@ -1376,9 +1376,9 @@ export interface GediEditPreset {
   coming_soon: boolean;
 }
 
-export interface GediMotionPreset {
+export interface GenjudoMotionPreset {
   id: string;
-  object: 'gedi_motion_preset';
+  object: 'genjudo_motion_preset';
   label: string;
   task: 'reference';
   prompt: string;
@@ -1386,18 +1386,18 @@ export interface GediMotionPreset {
   images: number;
 }
 
-export interface GediPresets {
-  object: 'gedi_presets';
+export interface GenjudoPresets {
+  object: 'genjudo_presets';
   /** The only model these recipes run on. */
   model: string;
-  edit_groups: GediEditGroupInfo[];
-  edit_presets: GediEditPreset[];
-  motion_presets: GediMotionPreset[];
+  edit_groups: GenjudoEditGroupInfo[];
+  edit_presets: GenjudoEditPreset[];
+  motion_presets: GenjudoMotionPreset[];
 }
 
-export interface GediMotion {
+export interface GenjudoMotion {
   id: string;
-  object: 'gedi_motion';
+  object: 'genjudo_motion';
   title: string;
   /** Pass as the single `reference_video_urls` entry of a `task: 'reference'` run. */
   media_url: string;
@@ -3827,16 +3827,16 @@ export class GenFireClient {
     });
   }
 
-  // ── Genfire Gedi ────────────────────────────────────────────────────────────
+  // ── Genfire Genjudo ────────────────────────────────────────────────────────────
 
   /**
-   * The Gedi recipe book: 25 video-EDIT recipes across six families and 6
+   * The Genjudo recipe book: 25 video-EDIT recipes across six families and 6
    * MOTION-TRANSFER recipes, each with the prompt already written in the
    * `@Video1` / `@Image1` idiom Seedance 2.5 binds on. Free.
    *
    * Run one with {@link createVideoGeneration}:
    * ```ts
-   * const { edit_presets } = await client.listGediPresets({ group: 'swap' });
+   * const { edit_presets } = await client.listGenjudoPresets({ group: 'swap' });
    * const preset = edit_presets.find((p) => p.id === 'swap-product')!;
    * await client.createVideoGeneration({
    *   model: 'video.seedance_2_5',
@@ -3848,12 +3848,12 @@ export class GenFireClient {
    * ```
    * An editing run follows the source clip, so omit `aspect_ratio` and `duration`.
    */
-  listGediPresets(
-    params: { group?: GediEditGroup | string } = {},
+  listGenjudoPresets(
+    params: { group?: GenjudoEditGroup | string } = {},
     signal?: AbortSignal
-  ): Promise<GediPresets> {
+  ): Promise<GenjudoPresets> {
     const query = params.group ? { group: params.group } : undefined;
-    return this.request<GediPresets>('GET', '/videos/gedi/presets', { query, signal });
+    return this.request<GenjudoPresets>('GET', '/videos/genjudo/presets', { query, signal });
   }
 
   /**
@@ -3861,12 +3861,12 @@ export class GenFireClient {
    * transferred onto your own character or product. Free; an empty array when
    * nothing is published yet. Bring your own clip instead whenever you have one.
    */
-  async listGediMotionLibrary(
+  async listGenjudoMotionLibrary(
     params: { limit?: number } = {},
     signal?: AbortSignal
-  ): Promise<GediMotion[]> {
+  ): Promise<GenjudoMotion[]> {
     const query = params.limit !== undefined ? { limit: params.limit } : undefined;
-    const response = await this.request<ListResponse<GediMotion>>('GET', '/videos/gedi/motion-library', { query, signal });
+    const response = await this.request<ListResponse<GenjudoMotion>>('GET', '/videos/genjudo/motion-library', { query, signal });
     return response.data;
   }
 
