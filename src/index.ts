@@ -204,6 +204,11 @@ export interface ModelCapabilities {
   /** The schema declares `bitrate_mode` (`standard` | `high`). */
   bitrate_mode?: boolean;
   /**
+   * Seedance 2.5 draft: accepts `draft: true` (a 480p preview at the 480p
+   * price) whose 1080p final {@link GenFireClient.renderDraftFinal} renders.
+   */
+  draft?: boolean;
+  /**
    * H3 Max Styles: accepts `video_style` (required there) and, on the `vhs`
    * look, `damage_level`. The legal values are the model's
    * `limits.video_styles` / `limits.damage_levels`.
@@ -247,6 +252,8 @@ export interface EstimateCostRequest {
   reference_audio_urls?: string[];
   reference_video_trims?: Array<{ index: number; start: number; end: number }>;
   task?: 'reference' | 'editing' | 'extension';
+  /** Seedance 2.5 draft: prices the 480p preview (see CreateVideoGenerationRequest.draft). */
+  draft?: boolean;
   loras?: Array<{ id: string; scale?: number }>;
   keyframes?: Array<{ image_url: string; frame_index: number }>;
   draft_cache_url?: string;
@@ -292,6 +299,26 @@ export interface CostEstimate extends PriceQuote {
   credits: number;
   unit: string;
   breakdown: Record<string, unknown>;
+}
+
+/** Body of {@link GenFireClient.renderDraftFinal}. Everything else comes from the draft. */
+export interface RenderDraftFinalRequest extends ProjectFileable {}
+
+/** What {@link GenFireClient.estimateDraftFinal} returns. */
+export interface DraftFinalEstimate {
+  object: 'cost_estimate';
+  model: string;
+  capability: 'video_generation';
+  /** Exact credits the 1080p final will reserve. */
+  credits: number;
+  unit: string;
+  breakdown: Record<string, unknown>;
+  /** The draft's video id (what a run id resolves to). */
+  draft_video_id: string;
+  /** The draft's run id, when you passed one. */
+  draft_run_id: string | null;
+  /** ISO timestamp after which the draft can no longer be finished. */
+  expires_at: string;
 }
 
 export interface Workflow {
@@ -785,6 +812,16 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * Pre-written prompts for both modes: {@link GenFireClient.listGenjudoPresets}.
    */
   task?: 'reference' | 'editing' | 'extension';
+  /**
+   * Seedance 2.5 DRAFT — `video.seedance_2_5` only (`capabilities.draft` in
+   * `listModels()`); any other model is a 400 `unsupported_draft`. `true`
+   * renders a 480p PREVIEW billed at the 480p price (text-, image- and
+   * reference-to-video, `task` included); `resolution` is ignored. When it
+   * looks right, {@link GenFireClient.renderDraftFinal} with this run's id
+   * renders the SAME shot as a native 1080p video — for 7 days from the
+   * draft's creation, as many times as you like.
+   */
+  draft?: boolean;
   /**
    * H3 Max Styles (`video.hailuo_03_max_styles`) only — and REQUIRED there
    * (400 `video_style_required`): the baked-in look the prompt is rendered in.
@@ -3825,6 +3862,45 @@ export class GenFireClient {
       signal: options.signal,
       headers: options.headers
     });
+  }
+
+  // ── Seedance 2.5 draft → 1080p final ────────────────────────────────────────
+
+  /**
+   * Render the native 1080p FINAL of a Seedance 2.5 draft — a
+   * {@link createVideoGeneration} run made with `draft: true`. The SAME shot
+   * (prompt, references, duration, aspect ratio, seed, audio) is re-rendered as
+   * a NEW video run; poll it like any other. Bills what a direct 1080p render of
+   * the draft's request costs — price it with {@link estimateDraftFinal} first —
+   * and bills whoever paid for the draft (its team pool, or you). Only for a
+   * completed draft, within 7 days of its creation; repeatable.
+   *
+   * `draftId` is the draft's run id (or its `output.video_id`). Pass your own
+   * `idempotencyKey` to make a retry safe: without one, every call buys a final.
+   * ```ts
+   * const draft = await client.createVideoGeneration(
+   *   { model: 'video.seedance_2_5', prompt: 'A slow push-in on a lighthouse at dusk', draft: true },
+   *   { idempotencyKey: 'lighthouse-draft-1' }
+   * );
+   * // …once the draft run completes and looks right:
+   * const final = await client.renderDraftFinal(draft.id, {}, { idempotencyKey: 'lighthouse-final-1' });
+   * ```
+   */
+  renderDraftFinal(draftId: string, input: RenderDraftFinalRequest = {}, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', `/videos/generations/${encodeURIComponent(draftId)}/final`, {
+      body: input,
+      idempotencyKey: options.idempotencyKey ?? `draft_final_${draftId}_${Date.now()}`,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * The exact credits {@link renderDraftFinal} will charge for this draft, and
+   * `expires_at` — after it the draft can no longer be finished. Creates nothing.
+   */
+  estimateDraftFinal(draftId: string, signal?: AbortSignal): Promise<DraftFinalEstimate> {
+    return this.request<DraftFinalEstimate>('POST', `/videos/generations/${encodeURIComponent(draftId)}/final/estimate`, { body: {}, signal });
   }
 
   // ── Genfire Genjudo ────────────────────────────────────────────────────────────
