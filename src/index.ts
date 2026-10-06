@@ -502,10 +502,9 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
   quality?: 'low' | 'medium' | 'high' | 'auto';
   /**
    * Output resolution. `image.grok_imagine_pro` and `image.grok_imagine_2`
-   * accept 1K | 2K on BOTH text-to-image and edit (4K is rejected). The Nano
-   * Banana family (image.nano_banana, image.nano_banana_2,
-   * image.nano_banana_pro) accepts it on the EDIT path only — the request must
-   * include image_url or mentions.
+   * accept 1K | 2K on BOTH text-to-image and edit (4K is rejected).
+   * image.nano_banana_2, image.nano_banana_2_1 and image.nano_banana_pro accept
+   * 1K | 2K | 4K on both paths too.
    */
   resolution?: '1K' | '2K' | '4K';
   /**
