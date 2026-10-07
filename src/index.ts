@@ -489,24 +489,37 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
   image_url?: string;
   /**
    * Up to 14 source image URLs for a multi-image edit. Supported by
-   * image.gpt_image_2, Seedream, Qwen Image 2 and the Nano Banana family;
-   * Grok uses at most the first 3. Routes through the model's edit variant.
+   * image.gpt_image_2, Seedream, Qwen Image 2, the Nano Banana family and
+   * image.ideogram_v4_5 (the first is the source, up to 4 more are references;
+   * 3 with a mask); Grok uses at most the first 3. Routes through the model's
+   * edit variant.
    */
   image_urls?: string[];
   /**
    * Quality tier. `image.gpt_image_2` accepts low | medium | high | auto and
    * prices them as a multiplier (low 1x, medium 6x, high 22x).
    * `image.grok_imagine_2` accepts low | medium ONLY, priced as two separate
-   * base rates. Unset generates (and bills) medium on both.
+   * base rates. `image.ideogram_v4_5` accepts low | medium | high, each tier
+   * its own price. Unset generates (and bills) medium on all three.
    */
   quality?: 'low' | 'medium' | 'high' | 'auto';
   /**
    * Output resolution. `image.grok_imagine_pro` and `image.grok_imagine_2`
    * accept 1K | 2K on BOTH text-to-image and edit (4K is rejected).
    * image.nano_banana_2, image.nano_banana_2_1 and image.nano_banana_pro accept
-   * 1K | 2K | 4K on both paths too.
+   * 1K | 2K | 4K on both paths too. `image.ideogram_v4_5` accepts 1K | 2K,
+   * defaults to 2K, and charges the same for both.
    */
   resolution?: '1K' | '2K' | '4K';
+  /**
+   * Ideogram 4.5 edits only (`image.ideogram_v4_5` with `image_url` /
+   * `image_urls`). `high` is Ideogram's Precise Edit: it changes only what the
+   * prompt names and keeps every other pixel intact (the output keeps the
+   * source's size). `regular` (default) is a normal edit. Same price either
+   * way. Any other model returns 400 `edit_precision_unsupported`; a request
+   * without a source image returns 400 `edit_precision_requires_source_image`.
+   */
+  edit_precision?: 'regular' | 'high';
   /**
    * Optional `[{ handle, influencer_id }]`. When supplied, the model auto-switches
    * to its edit variant and the influencer's reference photos are injected as
