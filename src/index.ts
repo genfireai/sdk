@@ -805,8 +805,8 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * `reference_video_urls` clip, `task` `reference` / omitted and
    * `aspect_ratio` omitted, `'auto'` or the clip's own ratio, it follows the
    * clip's own length —
-   * whole seconds, rounded DOWN when the clip's sound is kept and UP
-   * otherwise, 4–30 — billed on that length (as an edit is); otherwise 5 s.
+   * whole seconds, rounded UP, 4–30 — billed on that length (as an edit
+   * is); otherwise 5 s.
    */
   duration?: number;
   /** Output resolution (e.g. '480p', '720p', '1080p', '4k'). Supported values and pricing are per-model — see `resolutions` in the model's `limits` from `listModels()`. Higher resolutions cost more credits. */
@@ -938,8 +938,8 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * `reference` with a clip: the output frame and length follow the clip, so a
    * motion-transfer prompt that reads like an edit ("replace the person in
    * @Video1…") runs instead of being refused. It REPLACES any `duration` you
-   * send with the clip's own length (rounded down when its sound is kept, up
-   * otherwise, 4–30) — that is what bills — and an `aspect_ratio` other
+   * send with the clip's own length (whole seconds, rounded up, 4–30) —
+   * that is what bills — and an `aspect_ratio` other
    * than `'auto'` or the clip's own stops it following. With one clip and no `aspect_ratio` / `duration` the
    * server already does this. Dropped where it does not apply; any
    * non-Genjudo model is a 400 `unsupported_genjudo_option`.
