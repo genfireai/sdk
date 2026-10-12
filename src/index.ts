@@ -201,7 +201,11 @@ export interface ModelCapabilities {
    * Filter a model picker on this rather than hard-coding the alias.
    */
   video_task?: boolean;
-  /** The schema declares `bitrate_mode` (`standard` | `high`). */
+  /**
+   * The model takes `bitrate_mode` (`standard` | `high`) — Seedance 2.0 and
+   * 2.0 Fast. False everywhere else (`video.seedance_2_5` included), where a
+   * `bitrate_mode` you send has no effect and is ignored.
+   */
   bitrate_mode?: boolean;
   /**
    * Seedance 2.5 draft: accepts `draft: true` (a 480p preview at the 480p
@@ -254,6 +258,17 @@ export interface EstimateCostRequest {
   task?: 'reference' | 'editing' | 'extension';
   /** Seedance 2.5 draft: prices the 480p preview (see CreateVideoGenerationRequest.draft). */
   draft?: boolean;
+  /** Genjudo: send what the generation will send (see CreateVideoGenerationRequest.keep_source_audio). */
+  keep_source_audio?: boolean;
+  /** Genjudo "Match the clip" (see CreateVideoGenerationRequest.follow_source). */
+  follow_source?: boolean;
+  /**
+   * Send exactly what the generation will send: on a one-clip
+   * `video.seedance_2_5` reference run the ratio decides whether an omitted
+   * duration follows the clip (omitted / `'auto'` / the clip's own) or is 5 s, so it changes
+   * the price — and a quote made without it is not spendable on a run with it.
+   */
+  aspect_ratio?: string;
   loras?: Array<{ id: string; scale?: number }>;
   keyframes?: Array<{ image_url: string; frame_index: number }>;
   draft_cache_url?: string;
@@ -265,6 +280,7 @@ export interface EstimateCostRequest {
   resolution?: string;
   duration?: number;
   generate_audio?: boolean;
+  /** Clips to price. `video.seedance_2_5` renders one video per request — a count above 1 is clamped to 1 and quoted as one. */
   count?: number;
   image_url?: string;
   source_video_url?: string;
@@ -350,6 +366,27 @@ export interface RunProgress {
   stages: Array<{ key: string; label: string; status: 'done' | 'active' | 'pending' }>;
 }
 
+/**
+ * The `output` of a completed video run (`createVideoGeneration`,
+ * `renderDraftFinal`, lip sync). Read it as `run.output as VideoOutput`.
+ */
+export interface VideoOutput {
+  /** The finished video, on Genfire storage. */
+  video_url: string;
+  /** A small preview frame for galleries. */
+  thumbnail_url?: string | null;
+  /** The video's library id. */
+  video_id?: string | null;
+  /**
+   * A still of the final frame at the video's resolution, for chaining the
+   * next shot — pass it as the next `createVideoGeneration` call's
+   * `image_url` (start frame). Present on completed videos when available;
+   * absent otherwise. Always a Genfire storage URL.
+   */
+  last_frame_url?: string;
+  [key: string]: unknown;
+}
+
 export interface Run {
   id: string;
   object: 'run';
@@ -359,10 +396,15 @@ export interface Run {
   model: string | null;
   request_id: string;
   input_summary: Record<string, unknown> | null;
+  /** Capability-specific; null until completed. Video runs: {@link VideoOutput}. */
   output: Record<string, unknown> | null;
   usage: Record<string, unknown> | null;
   error: RunError | null;
   resource_id: string | null;
+  /**
+   * @deprecated Always `null` — kept on the type so existing code still
+   * compiles. Use `id` (and `request_id`) to refer to a run.
+   */
   provider_request_id: string | null;
   progress?: RunProgress;
   created_at: string;
@@ -710,12 +752,13 @@ export interface CreateElementOptions {
 }
 
 export interface Voice {
-  /** Pass this as `voice_id` to createSpeech(). Cloned voices look like `fal_cloned_<id>`. */
+  /** Pass this as `voice_id` to createSpeech(). Cloned voices look like `clone_<id>`. */
   id: string;
   object: 'voice';
   name: string;
   /** `cloned` = a voice you cloned; `stock` = a built-in ElevenLabs voice. */
   type: 'cloned' | 'stock';
+  /** Which voice family the id belongs to. Informational; `type` is what to branch on. */
   provider: string;
   preview_url: string | null;
   created_at: string | null;
@@ -749,7 +792,22 @@ export interface PublishGameResponse {
 export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFileable, Quotable {
   prompt: string;
   model?: string;
+  /**
+   * Default `16:9` — except on `video.seedance_2_5` with exactly ONE
+   * `reference_video_urls` clip and `task` `reference` / omitted / `editing`,
+   * where an omitted ratio follows the clip (`auto`). On a one-clip reference
+   * run a ratio other than `'auto'` or the clip's own also stops the LENGTH following the clip.
+   */
   aspect_ratio?: string;
+  /**
+   * Seconds. Default 5. On `video.seedance_2_5`, `'auto'` means the same as
+   * omitting it — never a length the model picks: with exactly ONE
+   * `reference_video_urls` clip, `task` `reference` / omitted and
+   * `aspect_ratio` omitted, `'auto'` or the clip's own ratio, it follows the
+   * clip's own length —
+   * whole seconds, rounded DOWN when the clip's sound is kept and UP
+   * otherwise, 4–30 — billed on that length (as an edit is); otherwise 5 s.
+   */
   duration?: number;
   /** Output resolution (e.g. '480p', '720p', '1080p', '4k'). Supported values and pricing are per-model — see `resolutions` in the model's `limits` from `listModels()`. Higher resolutions cost more credits. */
   resolution?: string;
@@ -763,16 +821,34 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    */
   end_image_url?: string;
   /**
-   * Up to 9 reference images for reference-to-video mode, cited in the prompt
-   * as `Image 1`, `Image 2`, … On H3 Max Recast
+   * Reference images for reference-to-video mode. The cap is per model
+   * (`limits.max_reference_images` in `listModels()`): up to 9 on most models,
+   * 30 on `video.seedance_2_5`, 10 on the `video.wan_3*` tiers and both Gemini
+   * Omni Flash tiers. Cite them in the prompt as `Image 1`, `Image 2`, …
+   * (Hailuo 03, Wan 3.0) or `@Image1`, `@Image2`, … (Seedance). On
+   * `video.seedance_2_5` an `image_url` sent alongside any reference media is
+   * not animated as a start frame: it is appended after these images as the
+   * next `@ImageN` (a 400 only when the 30-image pool is already full) — send
+   * `image_url` without reference media to animate a frame. On H3 Max Recast
    * (`video.hailuo_03_max_recast`) they are the new CAST and REQUIRED: 1–4
    * photos, one per person, replacing the main people in `source_video_url`
    * left to right (400 `reference_image_urls_required` with none).
    */
   reference_image_urls?: string[];
   /**
-   * Hailuo 03 only (`video.hailuo_03`). Up to 3 reference clips, 2–15s each,
-   * cited in the prompt as `Video 1`, `Video 2`, `Video 3`.
+   * Reference CLIPS — Seedance, Hailuo 03, Wan 3.0 and Gemini Omni Flash 1.1
+   * only (`limits.max_reference_videos` in `listModels()`):
+   * - up to 3 on `video.hailuo_03`, `video.hailuo_03_max`, the
+   *   `video.seedance_2_0*` models and `video.gemini_omni_flash_v11`; up to 3
+   *   on `video.hailuo_03_max_insert` (15 s total), where they guide the
+   *   inserted scene;
+   * - up to 10 on `video.seedance_2_5`: each 2–30 s after any trim, 30 s
+   *   COMBINED across the pool, duplicate URLs de-duplicated. `task`
+   *   `editing` / `extension` take EXACTLY one clip, and an edit clip must
+   *   run at least 4 s;
+   * - up to 5 on `video.wan_3` / `video.wan_3_prime` (15 s total).
+   * Cite them as `Video 1`, `Video 2`, … (Hailuo 03, Wan 3.0) or `@Video1`,
+   * `@Video2`, … (Seedance).
    */
   reference_video_urls?: string[];
   /**
@@ -781,26 +857,39 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * 0-based into `reference_video_urls` (or name the clip by `url`); seconds.
    * Only the window is sent (cut server-side, audio kept). Must fit the model's
    * per-clip cap (3s Omni Flash 1.1, 15s Hailuo 03 / Wan 3.0 — 15s total across
-   * the Wan pool — 30s Seedance) or the request is a 400
+   * the Wan pool — 30s Seedance 2.0, 2–30 s on Seedance 2.5 where every window
+   * shares the 30 s pool) or the request is a 400
    * `invalid_reference_video_trims`.
    */
   reference_video_trims?: Array<{ index?: number; url?: string; start: number; end: number }>;
   /**
-   * Hailuo 03 only (`video.hailuo_03`). Up to 3 reference audio clips, 2–15s
-   * each, cited in the prompt as `Audio 1`, `Audio 2`, `Audio 3`. This is how an
-   * on-camera character gets a consistent voice — e.g. "the woman in Image 1
-   * speaks with the voice in Audio 1". Cannot be the only reference: pair it
-   * with at least one reference image or video.
+   * Reference AUDIO — Seedance, Hailuo 03 and Wan 3.0 only
+   * (`limits.max_reference_audio` in `listModels()`): up to 3 on
+   * `video.hailuo_03`, `video.hailuo_03_max` and the `video.seedance_2_0*`
+   * models (2–15 s each); up to 10 on `video.seedance_2_5` (2–30 s each,
+   * ≤ 15 MB each, 30 s combined); up to 5 on `video.wan_3` /
+   * `video.wan_3_prime` (15 s total). Cite them in the prompt as `Audio 1`, …
+   * (Hailuo 03, Wan 3.0) or `@Audio1`, … (Seedance). This is how an on-camera
+   * character gets a consistent voice — e.g. "the woman in Image 1 speaks with
+   * the voice in Audio 1". Cannot be the only reference: pair it with at least
+   * one reference image or video (400 `invalid_reference_audio_urls`).
    */
   reference_audio_urls?: string[];
+  /**
+   * Whether to include generated audio when the model supports it (default
+   * true). On a one-clip Genjudo run see `keep_source_audio`: sending
+   * `generate_audio` yourself switches that default off.
+   */
   generate_audio?: boolean;
   /**
    * Output ENCODE quality: 'standard' or 'high'. 'high' requests a larger,
    * higher-quality file at no extra credit cost. Declared by
-   * `video.seedance_2_0`, `video.seedance_2_0_fast` and `video.seedance_2_5`;
-   * `video.seedance_2_0_mini` and every non-Seedance model have no such field
-   * and return 400 `unsupported_bitrate_mode` rather than dropping it from a
-   * run you paid for. Filter on `capabilities.bitrate_mode` in `listModels()`.
+   * `video.seedance_2_0` and `video.seedance_2_0_fast`; on every other model
+   * (`video.seedance_2_5`, `video.seedance_2_0_mini`, every non-Seedance
+   * model — `capabilities.bitrate_mode` is false) it has no effect and is
+   * ignored, whichever value you send. Any value other than `'standard'` /
+   * `'high'` is a 400 `invalid_bitrate_mode`. Filter on
+   * `capabilities.bitrate_mode` in `listModels()`.
    */
   bitrate_mode?: 'standard' | 'high';
   /**
@@ -808,22 +897,54 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * (`capabilities.video_task` in `listModels()`); any other model is a 400
    * `unsupported_task`.
    *
-   * - `'reference'` — MOTION TRANSFER. The clip in `reference_video_urls`
-   *   supplies the motion; the stills in `reference_image_urls` supply who or
-   *   what performs it. `aspect_ratio` and `duration` are yours.
+   * - `'reference'` (also what an omitted `task` runs) — MOTION TRANSFER. The
+   *   clip in `reference_video_urls` supplies the motion; the stills in
+   *   `reference_image_urls` supply who or what performs it. With exactly ONE
+   *   clip the run matches it by default: an omitted `aspect_ratio` is `auto`
+   *   (the clip's frame) and an omitted duration is the clip's own length,
+   *   billed on the clip as measured — unless you send a ratio other than `'auto'` or the clip's own.
+   *   Send a duration or a ratio to set it yourself.
    * - `'editing'` — VIDEO EDIT. The clip itself is re-lit / swapped / cleaned
    *   up, with any replacement subject in `reference_image_urls`. The output
    *   follows the SOURCE, so the model coerces both `aspect_ratio` and
-   *   `duration` to auto — do not send them.
-   * - `'extension'` — continue the clip past its last frame. `aspect_ratio` is
-   *   coerced to auto; `duration` is yours.
+   *   `duration` to auto — do not send them. The clip must run at least 4 s.
+   * - `'extension'` — continue the clip past its last frame. No clip defaults:
+   *   `aspect_ratio` is coerced to auto; `duration` is yours (default 5 s).
    *
-   * `'editing'` and `'extension'` need at least one `reference_video_urls`
-   * entry (400 `task_requires_reference_video` otherwise). Cite every reference
-   * in the prompt — `@Video1` is the first clip, `@Image1` the first still.
-   * Pre-written prompts for both modes: {@link GenFireClient.listGenjudoPresets}.
+   * `'editing'` and `'extension'` take EXACTLY one `reference_video_urls` clip
+   * (400 `task_requires_reference_video` with none; a second clip is a 400).
+   * Cite every reference in the prompt — `@Video1` is the first clip,
+   * `@Image1` the first still. Pre-written prompts for both modes:
+   * {@link GenFireClient.listGenjudoPresets}.
    */
   task?: 'reference' | 'editing' | 'extension';
+  /**
+   * GENFIRE GENJUDO — keep the CLIP'S OWN SOUND. `video.seedance_2_5` with a
+   * `reference_video_urls` clip, `task` `reference` / omitted / `editing`
+   * (ignored on `extension`, whose new seconds have no source sound, and when
+   * no clip is sent). The clip
+   * is sent to the model silent and its own soundtrack (the same trim window)
+   * is laid back under the render; `generate_audio` is forced false.
+   *
+   * DEFAULTS TO TRUE with exactly one clip when you send neither
+   * `generate_audio` nor `keep_source_audio` — but not when
+   * `reference_audio_urls` is sent or the clip has no audio track. Send
+   * `false` (or `generate_audio: true`) for a generated soundtrack instead. Any non-Genjudo
+   * model is a 400 `unsupported_genjudo_option`.
+   */
+  keep_source_audio?: boolean;
+  /**
+   * GENFIRE GENJUDO "Match the clip" — `video.seedance_2_5`, `task`
+   * `reference` with a clip: the output frame and length follow the clip, so a
+   * motion-transfer prompt that reads like an edit ("replace the person in
+   * @Video1…") runs instead of being refused. It REPLACES any `duration` you
+   * send with the clip's own length (rounded down when its sound is kept, up
+   * otherwise, 4–30) — that is what bills — and an `aspect_ratio` other
+   * than `'auto'` or the clip's own stops it following. With one clip and no `aspect_ratio` / `duration` the
+   * server already does this. Dropped where it does not apply; any
+   * non-Genjudo model is a 400 `unsupported_genjudo_option`.
+   */
+  follow_source?: boolean;
   /**
    * Seedance 2.5 DRAFT — `video.seedance_2_5` only (`capabilities.draft` in
    * `listModels()`); any other model is a 400 `unsupported_draft`. `true`
@@ -914,7 +1035,7 @@ export interface CreateLipsyncGenerationRequest extends TeamBillable, ProjectFil
 
 export interface DialogueLine {
   text: string;
-  /** A stock ElevenLabs voice id (cloned `fal_cloned_*` voices are not supported in dialogue). */
+  /** A stock ElevenLabs voice id (cloned `clone_*` voices are not supported in dialogue). */
   voice_id: string;
 }
 
@@ -923,7 +1044,7 @@ export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quot
   text?: string;
   /**
    * Voice id. Required for ElevenLabs models (stock voice id or a cloned
-   * `fal_cloned_<id>`). For `speech.seed_audio_1_0` it is OPTIONAL and takes a
+   * `clone_<id>`). For `speech.seed_audio_1_0` it is OPTIONAL and takes a
    * Seed preset name (e.g. `vivi_mixed_en_zh_ja_es_id`) instead.
    */
   voice_id?: string;
@@ -1078,7 +1199,7 @@ export interface CreateFacelessReelRequest extends TeamBillable, Quotable {
   caption_preset_id?: string;
   /** Override the caption animation: highlight | pop | typewriter | classic | background. */
   caption_animation?: string;
-  /** TTS voice id (ElevenLabs or FAL/Qwen). */
+  /** TTS voice id (an ElevenLabs voice or one of your cloned `clone_<id>` voices). */
   voice_id?: string;
   /** Camera-motion feel for the slideshow. Defaults to 'auto' (per-niche). */
   motion_vibe?: MotionVibe;
@@ -1451,7 +1572,7 @@ export interface GenjudoMotion {
   /** Pass as the single `reference_video_urls` entry of a `task: 'reference'` run. */
   media_url: string;
   thumbnail_url: string | null;
-  /** Seconds, where known. Counts against the 30.2s combined pool budget. */
+  /** Seconds, where known. Counts against the 30 s combined reference-clip pool. */
   duration: number | null;
   aspect_ratio: string | null;
   tags: string[];
@@ -2099,6 +2220,40 @@ function buildQuery(params: Record<string, string | number | undefined | null>):
   return query ? `?${query}` : '';
 }
 
+/**
+ * Extension → MIME type, for an upload whose caller named no content type.
+ * Without one the API stores the object as application/octet-stream, and a
+ * model handed a "video" of that type can refuse it.
+ */
+const UPLOAD_MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+  heic: 'image/heic', heif: 'image/heif', avif: 'image/avif', bmp: 'image/bmp', tif: 'image/tiff',
+  tiff: 'image/tiff', svg: 'image/svg+xml',
+  mp4: 'video/mp4', m4v: 'video/x-m4v', mov: 'video/quicktime', qt: 'video/quicktime', webm: 'video/webm',
+  mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
+  oga: 'audio/ogg', opus: 'audio/opus', flac: 'audio/flac',
+  json: 'application/json', txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', html: 'text/html',
+  pdf: 'application/pdf', zip: 'application/zip', glb: 'model/gltf-binary', gltf: 'model/gltf+json'
+};
+
+/** The MIME type for a file name's extension (any case), or undefined when unknown. */
+function contentTypeForFilename(filename: string): string | undefined {
+  const ext = /\.([A-Za-z0-9]+)$/.exec(filename)?.[1]?.toLowerCase();
+  return ext && Object.prototype.hasOwnProperty.call(UPLOAD_MIME_BY_EXTENSION, ext)
+    ? UPLOAD_MIME_BY_EXTENSION[ext]
+    : undefined;
+}
+
+/** Storage answers a failed PUT with XML `<Error><Code>…</Code><Message>…</Message>`. */
+function storageErrorReason(body: string): string | undefined {
+  const code = /<Code>([^<]*)<\/Code>/i.exec(body)?.[1]?.trim();
+  const message = /<Message>([^<]*)<\/Message>/i.exec(body)?.[1]?.trim();
+  const reason = [code, message].filter(Boolean).join(': ');
+  if (!reason) return undefined;
+  return reason.length > 300 ? `${reason.slice(0, 299)}…` : reason;
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
@@ -2228,12 +2383,12 @@ export interface UpscaleVideoRequest extends TeamBillable, Quotable {
   /** https URL of the video to upscale. Required. */
   source_video_url: string;
   /**
-   * Which engine runs the upscale. Topaz (the default) is a classical
-   * super-resolution pass at 2x/4x. Flux is a FLUX 3 diffusion pass at
-   * 1.5x-3x with a precise/creative mode — better detail, several times the
-   * credit cost, and limited to MP4 sources under 20s and 50MB.
+   * Which engine runs the upscale. Topaz (`video_upscale.topaz`, the default)
+   * is a classical super-resolution pass at 2x/4x. Flux is a FLUX 3 diffusion
+   * pass at 1.5x-3x with a precise/creative mode — better detail, several
+   * times the credit cost, and limited to MP4 sources under 20s and 50MB.
    */
-  model?: 'video_upscale.fal_video_upscaler' | 'video_upscale.flux_video_upscale';
+  model?: 'video_upscale.topaz' | 'video_upscale.flux_video_upscale';
   /** Topaz: 2 or 4. Flux: any value from 1.5 to 3. Default 2. */
   scale_factor?: number;
   /** Flux only. `precise` stays faithful to the source; `creative` (default) adds detail. */
@@ -3820,6 +3975,8 @@ export class GenFireClient {
       resolvedFilename = filename || (source as any).name || 'upload';
       resolvedContentType = resolvedContentType || source.type || undefined;
     }
+    // No type from the caller (or the Blob): read it off the extension.
+    resolvedContentType = resolvedContentType || contentTypeForFilename(resolvedFilename);
 
     const upload = await this.createUpload({
       filename: resolvedFilename,
@@ -3827,15 +3984,26 @@ export class GenFireClient {
       size_bytes: sizeBytes
     }, { signal });
 
-    const putResponse = await this.fetchImpl(upload.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': upload.content_type },
-      body: body as any,
-      signal
-    });
+    let putResponse: Response;
+    try {
+      putResponse = await this.fetchImpl(upload.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': upload.content_type },
+        body: body as any,
+        signal
+      });
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError') throw err;
+      // `fetch failed` alone names nothing; its cause (ECONNRESET, …) does.
+      const cause = (err as { cause?: { code?: string; message?: string } })?.cause;
+      const reason = cause?.code || cause?.message || (err instanceof Error ? err.message : String(err));
+      throw new Error(`Upload of ${resolvedFilename} failed: network error (${reason}).`);
+    }
 
     if (!putResponse.ok) {
-      throw new Error(`Upload PUT failed with status ${putResponse.status}.`);
+      const text = await putResponse.text().catch(() => '');
+      const reason = storageErrorReason(text);
+      throw new Error(`Upload of ${resolvedFilename} failed: HTTP ${putResponse.status}${reason ? ` (${reason})` : ''}.`);
     }
 
     return upload;
@@ -3881,7 +4049,7 @@ export class GenFireClient {
   /**
    * Render the native 1080p FINAL of a Seedance 2.5 draft — a
    * {@link createVideoGeneration} run made with `draft: true`. The SAME shot
-   * (prompt, references, duration, aspect ratio, seed, audio) is re-rendered as
+   * (prompt, references, duration, aspect ratio, audio) is re-rendered as
    * a NEW video run; poll it like any other. Bills what a direct 1080p render of
    * the draft's request costs — price it with {@link estimateDraftFinal} first —
    * and bills whoever paid for the draft (its team pool, or you). Only for a
@@ -3935,6 +4103,9 @@ export class GenFireClient {
    * });
    * ```
    * An editing run follows the source clip, so omit `aspect_ratio` and `duration`.
+   * A one-clip motion transfer matches the clip by default too (its frame and
+   * length, and its own sound — when it has one and no reference audio is
+   * sent — unless you send `generate_audio` or `keep_source_audio: false`).
    */
   listGenjudoPresets(
     params: { group?: GenjudoEditGroup | string } = {},
