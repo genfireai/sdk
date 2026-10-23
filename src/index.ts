@@ -533,16 +533,19 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
    * Up to 14 source image URLs for a multi-image edit. Supported by
    * image.gpt_image_2, Seedream, Qwen Image 2, the Nano Banana family and
    * image.ideogram_v4_5 (the first is the source, up to 4 more are references;
-   * 3 with a mask); Grok uses at most the first 3. Routes through the model's
-   * edit variant.
+   * 3 with a mask); Grok uses at most the first 3. `image.ideogram_vector`
+   * reads up to 5 as references for a new SVG (the first is the primary).
+   * Routes through the model's edit variant.
    */
   image_urls?: string[];
   /**
    * Quality tier. `image.gpt_image_2` accepts low | medium | high | auto and
    * prices them as a multiplier (low 1x, medium 6x, high 22x).
    * `image.grok_imagine_2` accepts low | medium ONLY, priced as two separate
-   * base rates. `image.ideogram_v4_5` accepts low | medium | high, each tier
-   * its own price. Unset generates (and bills) medium on all three.
+   * base rates. `image.ideogram_v4_5` and `image.ideogram_vector` accept
+   * low | medium | high, each tier its own price (`image.ideogram_vector`'s
+   * high costs more with reference images). Unset generates (and bills)
+   * medium on all of them.
    */
   quality?: 'low' | 'medium' | 'high' | 'auto';
   /**
@@ -2400,6 +2403,16 @@ export interface UpscaleVideoRequest extends TeamBillable, Quotable {
 export interface RemoveBackgroundRequest extends TeamBillable, ProjectFileable, Quotable {
   /** https URL of the image to cut out. Required. */
   image_url: string;
+}
+
+export interface VectorizeImageRequest extends TeamBillable, ProjectFileable, Quotable {
+  /** https URL of the image to trace (JPEG, PNG or WebP). Required. */
+  image_url: string;
+  /**
+   * `default` (finer detail) or `simple` (fewer, cleaner shapes — flat logos
+   * and icons). Same price. Omit for `default`.
+   */
+  mode?: 'default' | 'simple';
 }
 
 // ── Documents (Firestation Drive) ─────────────────────────────────────────────
@@ -4547,6 +4560,21 @@ export class GenFireClient {
    */
   removeBackground(input: RemoveBackgroundRequest, options: RequestOptions = {}): Promise<Run> {
     return this.request<Run>('POST', '/images/background-remove', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Trace an image into a true SVG (Ideogram Vectorize,
+   * `image_edit.ideogram_vectorize`). **Billable**, flat price. The model is
+   * fixed. To generate a NEW vector from a prompt, call `createImageGeneration` with
+   * `model: 'image.ideogram_vector'`.
+   */
+  vectorizeImage(input: VectorizeImageRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/images/vectorize', {
       body: input,
       idempotencyKey: options.idempotencyKey,
       signal: options.signal,
