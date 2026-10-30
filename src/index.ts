@@ -33,16 +33,20 @@ export type GenFireScope =
   | 'moodboards:read'
   | 'projects:read'
   | 'projects:write'
+  | 'designs:read'
+  | 'designs:write'
   | 'marketing:read'
   | 'teams:read'
   | 'tasks:read'
-  | 'tasks:write';
+  | 'tasks:write'
+  | 'agent:read'
+  | 'agent:write';
 
 export type RunStatus = 'queued' | 'processing' | 'completed' | 'failed';
 export type BatchStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'partial';
 export type BatchMode = 'workflow' | 'operation';
 export type BatchItemStatus = 'queued' | 'processing' | 'completed' | 'failed';
-export type WebhookEventType = 'run.completed' | 'run.failed' | 'batch.completed' | 'batch.failed';
+export type WebhookEventType = 'run.completed' | 'run.failed' | 'batch.completed' | 'batch.failed' | 'agent.turn.completed';
 export type WebhookStatus = 'active' | 'disabled';
 export type WebhookDeliveryStatus = 'pending' | 'success' | 'failed';
 export type CredentialType = 'api_key' | 'access_token';
@@ -535,6 +539,7 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
    * image.ideogram_v4_5 (the first is the source, up to 4 more are references;
    * 3 with a mask); Grok uses at most the first 3. `image.ideogram_vector`
    * reads up to 5 as references for a new SVG (the first is the primary).
+   * `image.krea_3` reads up to 8 (the first is the source) and bills each one.
    * Routes through the model's edit variant.
    */
   image_urls?: string[];
@@ -553,7 +558,8 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
    * accept 1K | 2K on BOTH text-to-image and edit (4K is rejected).
    * image.nano_banana_2, image.nano_banana_2_1 and image.nano_banana_pro accept
    * 1K | 2K | 4K on both paths too. `image.ideogram_v4_5` accepts 1K | 2K,
-   * defaults to 2K, and charges the same for both.
+   * defaults to 2K, and charges the same for both. `image.krea_3` accepts
+   * 1K | 2K, defaults to 1K, and 2K costs 4x.
    */
   resolution?: '1K' | '2K' | '4K';
   /**
@@ -835,7 +841,10 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * `image_url` without reference media to animate a frame. On H3 Max Recast
    * (`video.hailuo_03_max_recast`) they are the new CAST and REQUIRED: 1–4
    * photos, one per person, replacing the main people in `source_video_url`
-   * left to right (400 `reference_image_urls_required` with none).
+   * left to right (400 `reference_image_urls_required` with none). On H3 Max
+   * Relight (`video.hailuo_03_max_relight`) the ONE entry is the LIGHTING
+   * image — a sphere render of the target light — and REQUIRED (a lone
+   * `image_url` beside the source is taken as it).
    */
   reference_image_urls?: string[];
   /**
@@ -973,16 +982,21 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    */
   damage_level?: VideoDamageLevel;
   /**
-   * The clip to edit, extend, restyle or recast. REQUIRED on the
+   * The clip to edit, extend, restyle, recast or relight. REQUIRED on the
    * source-video-only models — `video.hailuo_03_max_extend`,
-   * `video.hailuo_03_max_3d`, `video.hailuo_03_max_insert` and
-   * `video.hailuo_03_max_recast` (400 `source_video_url_required` without it).
+   * `video.hailuo_03_max_3d`, `video.hailuo_03_max_insert`,
+   * `video.hailuo_03_max_recast` and `video.hailuo_03_max_relight` (400
+   * `source_video_url_required` without it).
    * H3 Max Recast keeps the clip's motion, camera, cuts and sound and swaps its
    * people for the `reference_image_urls` photos: the clip must run 5–30 s
    * (no single shot over 15 s), the output has its length and framing (no
    * `duration` / `aspect_ratio`), `prompt` is optional (pass `''`) and it is
    * billed per second of the clip as measured server-side — an unreadable
    * clip is a 422 `source_video_unreadable`, never a guessed charge.
+   * H3 Max Relight keeps the clip's people, motion, camera and sound and
+   * changes its light: at least ~2.4 s (over 15 s runs its first 15 s), no
+   * `prompt` (ignored) and no `duration`, billed per second of the clip the
+   * same way.
    */
   source_video_url?: string;
   /**
@@ -1038,8 +1052,10 @@ export interface CreateLipsyncGenerationRequest extends TeamBillable, ProjectFil
 
 export interface DialogueLine {
   text: string;
-  /** A stock ElevenLabs voice id (cloned `clone_*` voices are not supported in dialogue). */
+  /** A stock ElevenLabs voice id (cloned `clone_*` voices are not supported in dialogue). On the Gemini TTS models, a prebuilt voice name. */
   voice_id: string;
+  /** Gemini TTS only — delivery direction for this line (not spoken). */
+  style_instructions?: string;
 }
 
 export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quotable {
@@ -1097,6 +1113,14 @@ export interface CreateSpeechRequest extends TeamBillable, ProjectFileable, Quot
   volume?: number;
   /** Pitch shift in semitones, -12..12. Seed Audio 1.0 only. */
   pitch?: number;
+  /**
+   * Gemini TTS only (`speech.gemini_3_8_flash_tts`, `speech.gemini_3_8_flash_lite_tts`):
+   * delivery direction — tone, pace, accent — kept out of the script. Not
+   * spoken, not billed, ≤1,000 characters. On these models `voice_id` is an
+   * optional prebuilt voice name (Kore default) and `dialogue` takes exactly
+   * two distinct voices.
+   */
+  style_instructions?: string;
 }
 
 export interface CreateMusicRequest extends TeamBillable, ProjectFileable, Quotable {
@@ -1224,6 +1248,8 @@ export interface EstimateFacelessReelCostRequest {
   music?: Pick<FacelessReelMusic, 'source'>;
   animated_hook?: boolean;
   video_model?: ReelVideoModel;
+  /** Series size 1-4. Above 1 the reply adds `per_episode_total` and `series_total`. */
+  episodes?: number;
 }
 
 export interface FacelessReelCostEstimate {
@@ -1235,6 +1261,90 @@ export interface FacelessReelCostEstimate {
   videoClips: number;
   total: number;
   sceneCount: number;
+  /** Present when `episodes` > 1: the series quote (per-episode × episodes). */
+  episodes?: number;
+  per_episode_total?: number;
+  series_total?: number;
+}
+
+/** The facts every episode of a faceless series keeps. */
+export interface FacelessSeriesBible {
+  premise?: string;
+  world?: string;
+  tone?: string;
+  style?: string;
+  /** Up to 4 recurring characters, each with ONE fixed look. */
+  cast?: Array<{ name: string; description: string }>;
+}
+
+/** POST /v1/faceless-reels/series — 1-4 episodes of ONE continuous story. */
+export interface CreateFacelessSeriesRequest extends Quotable {
+  topic: string;
+  /** 1-4 (default 3), or outlines `[{ title, logline, recap?, cliffhanger? }]`. */
+  episodes?: number | Array<{ title?: string; logline?: string; recap?: string; cliffhanger?: string }>;
+  /** File under this channel: its settings + accounts, posted in order. */
+  subscription_id?: string;
+  /** Without a channel: a niche preset id or a saved format (`cp_…`). */
+  preset_id?: string;
+  series_bible?: FacelessSeriesBible;
+  /** 0-168 hours between episode posts. */
+  publish_spacing_hours?: number;
+  /** Without a channel: "platform:account_id" targets to post to, in order. */
+  targets?: string[];
+  aspect_ratio?: '9:16' | '16:9';
+  target_duration_sec?: number;
+  style_id?: string;
+  voice_id?: string;
+  motion_style?: 'seamless' | 'scenes' | 'stills';
+  captions_on?: boolean;
+  fast_mode?: boolean;
+  music?: FacelessReelMusic;
+  reference_images?: Array<{ url: string; label?: string }>;
+}
+
+export interface FacelessSeries {
+  id: string;
+  object: 'faceless_series';
+  title: string;
+  topic: string;
+  status: 'generating' | 'completed' | 'partial' | 'failed';
+  subscription_id: string | null;
+  engine: 'reel' | 'explainer';
+  aspect_ratio: '9:16' | '16:9';
+  target_duration_sec: number;
+  episode_count: number;
+  bible: FacelessSeriesBible & { cast: Array<{ name: string; description: string }> };
+  episodes: Array<{
+    index: number; title: string; logline: string; recap: string | null; cliffhanger: string | null;
+    reel_id: string | null; run_id: string | null; status: string; video_url: string | null;
+    thumbnail_url: string | null; released: boolean; error: string | null;
+  }>;
+  publish: { spacing_hours: number; released_through: number; target_count: number };
+  estimate: { per_episode: number | null; total: number | null };
+  created_at: string | null;
+}
+
+/** A saved faceless format (`cp_…`), e.g. read from a TikTok/Reel/Short link. */
+export interface FacelessCustomPreset {
+  id: string;
+  object: 'faceless_custom_preset';
+  label: string;
+  blurb: string;
+  emoji: string;
+  sample_topic: string;
+  shape: 'story' | 'facts' | 'interactive';
+  recommended_style_id: string;
+  caption_preset_id: string;
+  music_preset_id: string | null;
+  motion_vibe: 'auto' | 'calm' | 'dynamic' | 'energetic';
+  target_duration_sec: number;
+  format: {
+    hook_pattern: string; pacing: string; shot_length_sec: number; measured: boolean;
+    caption_style: string; vo_tone: string; music_energy: 'none' | 'low' | 'medium' | 'high';
+    words_per_second: number | null; duration_sec: number | null;
+  };
+  source: { platform: 'tiktok' | 'instagram' | 'youtube'; url: string } | null;
+  created_at: string | null;
 }
 
 /** 'shorts' = 9:16 reels; 'longform' = 16:9 explainer episodes. Picks the engine. */
@@ -2086,6 +2196,27 @@ export interface RuntimeExecutionRequest {
 }
 export interface RuntimeArtifact {object:'runtime_artifact';path:string;bytes:number;sha256:string;url:string;expires_in_seconds:number;text?:string}
 export interface RuntimeCapabilities {object:'runtime_capabilities';available:boolean;engines:string[];max_workspace_bytes:number;max_files:number;max_command_seconds:number}
+export interface SandboxCapabilities {object:'sandbox_capabilities';available:boolean;enabled_for_you:boolean;paid_only:true;credits_per_call:number;isolation:'microvm'|'job'|null;memory_pause:boolean;persistent_processes:boolean;vcpu:number|null;memory_mb:number|null;disk_gb:number|null;max_workspace_bytes:number|null;egress:string;workspace_ttl_days:number;limits:Record<string,number>;quota_limits:{calls_per_day:number;seconds_per_day:number;concurrent:number;workspaces:number};quota:Record<string,unknown>|null;runtime:Record<string,unknown>}
+export type SandboxSaveItem = string | {path:string;title?:string}
+export interface SandboxExecRequest {command?:string;timeout_seconds?:number;background?:boolean;restart?:boolean;size?:'standard'|'xl';image_paths?:string[];project_id?:string;input_media?:Array<string|{id:string;path?:string}>;save_paths?:SandboxSaveItem[]}
+export interface SandboxWorkspace {object:'sandbox_workspace';id:string;project_id:string|null;scope:'project'|'scratch';status:string;isolation:'microvm'|'job';has_box:boolean;created_at:string;last_used_at:string;expires_at:string;lease_expires_at:string|null;size:'standard'|'xl'}
+export interface SandboxSavedOutput {object:'sandbox_saved_output';path:string;kind:'video'|'image'|'audio'|'file';url:string;bytes:number;content_type:string;run_id:string|null;generation_id:string|null;project_id:string|null;duration_seconds?:number|null;width?:number|null;height?:number|null}
+export interface SandboxJob {object:'sandbox_job';job_id:string;workspace_id:string;pid:number|null;log_path:string;status_path:string;state:'running'|'exited'|'killed'|'unknown'|string;exit_code:number|null;log_tail:string;started_at:string;lease_expires_at:string|null;saved:SandboxSavedOutput[];pending_save_paths:string[]}
+export interface SandboxExecResult {object:'sandbox_exec';call_id:string;workspace:SandboxWorkspace;sandbox_created:boolean;exit_code:number|null;stdout:string;stderr:string;truncated:boolean;timed_out:boolean;duration_ms:number;error?:string;background:{job_id:string;pid:number|null;log_path:string;status_path:string;lease_expires_at:string;poll:string}|null;staged_inputs:Array<{path:string;source:string;ok:boolean;bytes:number}>;images:Array<{path:string;mime_type:'image/png'|'image/jpeg';width:number;height:number;bytes:number;data_base64:string}>;saved:SandboxSavedOutput[];notes:string[]}
+// Blade reference edits (/v1/blade/*; 503 `blade_unavailable` until bladeV1 is on).
+export type BladePresetCategory = 'personal_edit'|'style_transfer'|'motion_transfer'
+export interface BladePreset {object:'blade_preset';slug:string;title:string;description:string;category:BladePresetCategory;reference:{media_url:string;poster_url:string|null;duration_sec:number|null;width:number|null;height:number|null;has_audio:boolean};inputs:{images:{min:number;max:number};clips:{min:number;max:number}|null;note:{max_chars:number}};brief:string;tags:string[];status:'live'|'hidden';order:number}
+/** One input (or the reference) ready for the sandbox: pass `stage` to SandboxExecRequest `input_media` as-is. `stage` is null while the media is still rendering. */
+export interface BladeStagedMedia {id:string;kind:'image'|'video'|'audio'|'unknown';stage:{source:string;path:string}|null}
+export interface BladeSession {object:'blade_session';id:string;project_id:string;preset:string|null;reference_media_id:string|null;input_media_ids:string[];reference:BladeStagedMedia|null;inputs:BladeStagedMedia[];note:string;status:'started'|'delivered'|'abandoned';quoted_credits:number|null;cap_credits:number|null;run_ids:string[];spent_credits:number;final:{video_generation_id:string;timeline_id:string|null;run_id:string|null;video_url:string|null;thumbnail_url:string|null}|null;skill:'blade';created_at:string;updated_at:string;quoted_at:string|null;delivered_at:string|null}
+export interface BladeStartRequest {preset?:string;reference_media_id?:string;input_media_ids?:string[];note?:string;project_id?:string}
+export interface BladeSessionStart {object:'blade_session_start';session_id:string;project_id:string;project_created:boolean;preset:BladePreset|null;skill:'blade';reference:BladeStagedMedia|null;inputs:BladeStagedMedia[];next:string[];notes:string[];session:BladeSession}
+export interface BladeSessionSummary {object:'blade_session_summary';session_id:string;status:'started'|'delivered'|'abandoned';preset:string|null;project_id:string;created_at:string;updated_at:string;spent_credits:number;final:BladeSession['final']}
+export interface BladeListSessionsParams {/** Default 20, at most 50. */limit?:number;cursor?:string}
+export interface BladeQuoteRequest {quoted_credits?:number;cap_credits?:number}
+/** `timeline_id` for a timeline you already made, or `timeline` (the manifest `gf assemble` writes — the createTimeline body) to create it in the session's project. */
+export interface BladeCompleteRequest {video_generation_id?:string;run_id?:string;timeline_id?:string;timeline?:Record<string,unknown>;run_ids?:string[]}
+export interface BladeDelivery {video:{generation_id:string;url:string|null;thumbnail_url:string|null;duration_seconds:number|null};timeline_id:string|null;project_id:string;filed:boolean;already_delivered:boolean;credits:{spent:number;quoted:number|null;cap:number|null;over_cap:boolean;pending_run_ids:string[];runs:Array<{run_id:string;status:string;credits:number;settled:boolean}>}}
 export interface FullstackApplication {object:'fullstack_application';workspace_id:string;status:'deploying'|'deployed'|'failed';url:string|null;deployed_rev:number|null;operation_id:string|null;error:string|null;updated_at:string}
 
 export interface WaitForRunOptions {
@@ -2266,7 +2397,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
   const data = text ? JSON.parse(text) : {};
 
   if (!response.ok) {
-    throw new GenFireApiError(data, response.status);
+    const error = new GenFireApiError(data, response.status);
+    // Every 429 carries Retry-After (seconds); surfaced so callers can back off exactly.
+    const retryAfter = Number(response.headers?.get?.('retry-after'));
+    if (Number.isFinite(retryAfter) && retryAfter >= 0) {
+      (error as GenFireApiError & { retryAfterSeconds?: number }).retryAfterSeconds = retryAfter;
+    }
+    throw error;
   }
 
   return data as T;
@@ -3600,6 +3737,118 @@ export interface GetUsageParams {
   team_id?: string;
 }
 
+// ── Agent API (/v1/agent/sessions) ───────────────────────────────────────────
+// Off for an account until Genfire enables it (every route answers 404
+// `agent_api_not_enabled`). Scopes: agent:read, agent:write.
+
+export type AgentSessionStatus = 'running' | 'idle' | 'needs_approval' | 'failed' | 'cancelled';
+export type AgentTurnStatus = 'queued' | 'running' | 'completed' | 'needs_approval' | 'failed' | 'cancelled';
+
+export interface AgentSpend {
+  credits: number;
+  generation_credits: number;
+  token_credits: number;
+}
+
+/** Why a turn stopped instead of spending past what you allowed. */
+export interface AgentApproval {
+  id: string;
+  kind: 'over_budget' | 'price_unknown' | 'publish';
+  status: 'pending' | 'approved' | 'superseded';
+  summary: string;
+  capability: string | null;
+  estimated_credits: number | null;
+  spent_credits: number;
+  max_credits: number;
+  /** What `approveAgentSession` uses when you pass no `max_credits`. */
+  suggested_max_credits: number;
+}
+
+export interface AgentTurn {
+  object: 'agent_turn';
+  id: string;
+  session_id: string;
+  status: AgentTurnStatus;
+  message: string;
+  max_credits: number;
+  spend: AgentSpend;
+  approval: AgentApproval | null;
+  error: { code: string; message: string } | null;
+  response: string | null;
+  output_run_ids: string[];
+  created_at: string;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_ms: number | null;
+  continuation_of: string | null;
+}
+
+export interface AgentMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string | null;
+  turn_id: string | null;
+}
+
+export interface AgentOutput {
+  run_id: string;
+  capability: string;
+  status: string;
+  model: string | null;
+  url: string | null;
+  thumbnail_url: string | null;
+  created_at: string | null;
+}
+
+export interface AgentSession {
+  object: 'agent_session';
+  id: string;
+  title: string | null;
+  status: AgentSessionStatus;
+  model: string | null;
+  conversation_id: string | null;
+  created_at: string;
+  updated_at: string;
+  spend: AgentSpend & { turns: number };
+  current_turn: AgentTurn | null;
+  approval: AgentApproval | null;
+  last_message: string | null;
+  /** `getAgentSession` only (oldest → newest, up to the 100 newest). */
+  messages?: AgentMessage[];
+  /** `getAgentSession` only. */
+  outputs?: AgentOutput[];
+  /** `waitForAgentSession` only: true when the turn was still working at the timeout. */
+  timed_out?: boolean;
+}
+
+export interface CreateAgentSessionRequest {
+  message: string;
+  /** Generation credits this turn may spend (default 50, max 2000; out of range is clamped). */
+  max_credits?: number;
+  model?: string;
+  title?: string;
+  /** https image URLs (up to 8). */
+  attachments?: string[];
+}
+
+export interface SendAgentMessageRequest {
+  message: string;
+  max_credits?: number;
+  attachments?: string[];
+}
+
+export interface ListAgentSessionsParams {
+  limit?: number;
+  cursor?: string;
+}
+
+export interface AgentSessionList {
+  object: 'list';
+  data: AgentSession[];
+  next_cursor: string | null;
+}
+
 export class GenFireClient {
   readonly baseUrl: string;
   private readonly token: string;
@@ -3839,6 +4088,50 @@ export class GenFireClient {
 
   getRunOutput(runId: string, signal?: AbortSignal): Promise<RunOutput> {
     return this.request<RunOutput>('GET', `/runs/${encodeURIComponent(runId)}/output`, { signal });
+  }
+
+  /**
+   * Cancel a queued or processing run. Reserved credits are refunded and the
+   * run ends `failed` with `error.code: "cancelled"`. Repeating is harmless.
+   * 409 `run_not_cancellable` / `run_completing` when it can no longer stop.
+   */
+  cancelRun(runId: string, signal?: AbortSignal): Promise<Run> {
+    return this.request<Run>('POST', `/runs/${encodeURIComponent(runId)}/cancel`, { body: {}, signal });
+  }
+
+  /** Permanently delete a run you own and its output files (inputs are never deleted). */
+  deleteRun(runId: string, signal?: AbortSignal): Promise<DeletedRun> {
+    return this.request<DeletedRun>('DELETE', `/runs/${encodeURIComponent(runId)}`, { signal });
+  }
+
+  /**
+   * Package a timeline for Final Cut Pro / Premiere / Resolve / Avid: a .zip of
+   * FCPXML, Premiere XML, OTIO and EDLs with the media bundled and linked.
+   * Free. Returns a run — `waitForRun`, then `output.url`.
+   */
+  createTimelineExport(timelineId: string, input: TimelineExportRequest = {}, options: { idempotencyKey?: string; signal?: AbortSignal } = {}): Promise<Run> {
+    return this.request<Run>('POST', `/videos/timelines/${encodeURIComponent(timelineId)}/exports`, {
+      body: input,
+      idempotencyKey: options.idempotencyKey || newIdempotencyKey(),
+      signal: options.signal
+    });
+  }
+
+  /**
+   * A pro deliverable from a finished run or URL (ProRes 422 HQ, DNxHR HQ,
+   * WAV 48 kHz/24-bit, PNG/TIFF sequences) or a layered PSD from a Layers
+   * project. Free. Returns a run — `waitForRun`, then `output.url`.
+   */
+  createExport(input: ProExportRequest, options: { idempotencyKey?: string; signal?: AbortSignal } = {}): Promise<Run> {
+    return this.request<Run>('POST', '/exports', {
+      body: input,
+      idempotencyKey: options.idempotencyKey || newIdempotencyKey(),
+      signal: options.signal
+    });
+  }
+
+  listExportFormats(signal?: AbortSignal): Promise<ListResponse<ExportFormat>> {
+    return this.request<ListResponse<ExportFormat>>('GET', '/exports/formats', { signal });
   }
 
   /** Wait concurrently, keeping completed results if another run cannot be read. */
@@ -4272,6 +4565,63 @@ export class GenFireClient {
     return this.request<ListResponse<Record<string, any>>>('GET', '/faceless-reels/caption-presets', { signal });
   }
 
+  /** Estimate a faceless series: per-episode credits × episodes (+ a quote). */
+  estimateFacelessSeries(input: CreateFacelessSeriesRequest, signal?: AbortSignal): Promise<Record<string, any>> {
+    return this.request<Record<string, any>>('POST', '/faceless-reels/series/estimate', { body: input, signal });
+  }
+
+  /**
+   * Plan + start a faceless series (1-4 episodes, one continuous story). One
+   * run per episode; filed under a channel it auto-posts strictly in order.
+   */
+  createFacelessSeries(input: CreateFacelessSeriesRequest, options: RequestOptions = {}): Promise<FacelessSeries> {
+    return this.request<FacelessSeries>('POST', '/faceless-reels/series', {
+      body: input,
+      idempotencyKey: options.idempotencyKey ?? `faceless_series_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      signal: options.signal,
+    });
+  }
+
+  listFacelessSeries(params: { subscription_id?: string; limit?: number } = {}, signal?: AbortSignal): Promise<ListResponse<FacelessSeries>> {
+    return this.request<ListResponse<FacelessSeries>>('GET', '/faceless-reels/series', { query: { subscription_id: params.subscription_id, limit: params.limit }, signal });
+  }
+
+  getFacelessSeries(id: string, signal?: AbortSignal): Promise<FacelessSeries> {
+    return this.request<FacelessSeries>('GET', `/faceless-reels/series/${encodeURIComponent(id)}`, { signal });
+  }
+
+  /** Post every series episode that is next in line (normally automatic). */
+  releaseFacelessSeries(id: string, signal?: AbortSignal): Promise<{ object: 'faceless_series_release'; released: number[] }> {
+    return this.request<{ object: 'faceless_series_release'; released: number[] }>('POST', `/faceless-reels/series/${encodeURIComponent(id)}/release`, { body: {}, signal });
+  }
+
+  /** Save a TikTok / Reel / Short's FORMAT (never its audio, script or footage) as a `cp_…` preset. Takes 30-120 s. */
+  createFacelessPresetFromLink(input: { url: string; label?: string }, options: RequestOptions = {}): Promise<FacelessCustomPreset & { used_video: boolean; dropped_fields: string[] }> {
+    return this.request<FacelessCustomPreset & { used_video: boolean; dropped_fields: string[] }>('POST', '/faceless-reels/custom-presets/from-link', {
+      body: input,
+      idempotencyKey: options.idempotencyKey ?? `faceless_link_preset_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      signal: options.signal,
+    });
+  }
+
+  listFacelessCustomPresets(signal?: AbortSignal): Promise<ListResponse<FacelessCustomPreset>> {
+    return this.request<ListResponse<FacelessCustomPreset>>('GET', '/faceless-reels/custom-presets', { signal });
+  }
+
+  deleteFacelessCustomPreset(id: string, signal?: AbortSignal): Promise<{ id: string; object: 'faceless_custom_preset'; deleted: boolean }> {
+    return this.request<{ id: string; object: 'faceless_custom_preset'; deleted: boolean }>('DELETE', `/faceless-reels/custom-presets/${encodeURIComponent(id)}`, { signal });
+  }
+
+  /** The narration lines of a finished reel/explainer (reel id or run id). */
+  listFacelessVoiceoverLines(reelId: string, signal?: AbortSignal): Promise<{ object: 'list'; reel_id: string; editable: boolean; data: Array<{ index: number; text: string; start_sec: number | null; end_sec: number | null }> }> {
+    return this.request('GET', `/faceless-reels/reels/${encodeURIComponent(reelId)}/voiceover-lines`, { signal });
+  }
+
+  /** Re-voice ONE line (new `text` or a fresh read) and re-time its captions; only compose + captions re-run. */
+  redoFacelessVoiceoverLine(reelId: string, line: number, input: { text?: string } = {}, signal?: AbortSignal): Promise<{ object: 'voiceover_line_redo'; reel_id: string; status: 'generating'; line: number; text: string; tempo: number; shift_sec: number }> {
+    return this.request('POST', `/faceless-reels/reels/${encodeURIComponent(reelId)}/voiceover-lines/${line}/redo`, { body: input, signal });
+  }
+
   /** List your recurring reel subscriptions ("Stories"). */
   listFacelessReelSubscriptions(signal?: AbortSignal): Promise<ListResponse<FacelessReelSubscription>> {
     return this.request<ListResponse<FacelessReelSubscription>>('GET', '/faceless-reels/subscriptions', { signal });
@@ -4497,6 +4847,81 @@ export class GenFireClient {
 
   async deleteWebhook(endpointId: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<void> {
     await this.request<void>('DELETE', `/webhooks/${encodeURIComponent(endpointId)}`, {
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Agent API ───────────────────────────────────────────────────────────────
+
+  /**
+   * Give the Genfire agent a job. Answers at once (202) with the session
+   * `running`; follow with `waitForAgentSession`. BILLS: the turn may spend
+   * up to `max_credits` on generations (default 50) plus the agent's own
+   * tokens — past that, or for an unpriced step or a social post, it stops
+   * with status `needs_approval` instead of spending.
+   */
+  createAgentSession(input: CreateAgentSessionRequest, options: RequestOptions = {}): Promise<AgentSession> {
+    return this.request<AgentSession>('POST', '/agent/sessions', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** The next message in a session. Throws a 409 `turn_in_progress` while a turn is still queued or running. */
+  sendAgentMessage(sessionId: string, input: SendAgentMessageRequest, options: RequestOptions = {}): Promise<AgentSession> {
+    return this.request<AgentSession>('POST', `/agent/sessions/${encodeURIComponent(sessionId)}/messages`, {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** A session with its transcript (up to the 100 newest messages) and outputs. Free. */
+  getAgentSession(sessionId: string, signal?: AbortSignal): Promise<AgentSession> {
+    return this.request<AgentSession>('GET', `/agent/sessions/${encodeURIComponent(sessionId)}`, { signal });
+  }
+
+  /** Recent sessions, newest first (no transcripts). Free. */
+  listAgentSessions(params: ListAgentSessionsParams = {}, signal?: AbortSignal): Promise<AgentSessionList> {
+    return this.request<AgentSessionList>('GET', '/agent/sessions', {
+      query: { limit: params.limit, cursor: params.cursor },
+      signal
+    });
+  }
+
+  /**
+   * Wait up to `timeoutSeconds` (1–300, default 60) for the current turn to
+   * end. `timed_out: true` means it is still working — a timeout never
+   * cancels it. Free.
+   */
+  waitForAgentSession(sessionId: string, timeoutSeconds?: number, signal?: AbortSignal): Promise<AgentSession> {
+    return this.request<AgentSession>('POST', `/agent/sessions/${encodeURIComponent(sessionId)}/wait`, {
+      body: timeoutSeconds === undefined ? {} : { timeout_seconds: timeoutSeconds },
+      signal
+    });
+  }
+
+  /** Stop the running turn at its next step (what already ran is kept). Idempotent. */
+  cancelAgentSession(sessionId: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<AgentSession> {
+    return this.request<AgentSession>('POST', `/agent/sessions/${encodeURIComponent(sessionId)}/cancel`, {
+      body: {},
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /**
+   * Continue a turn that stopped with `needs_approval`. BILLS: the
+   * continuation may spend up to `maxCredits` (default the approval's
+   * `suggested_max_credits`). Throws a 409 `nothing_to_approve` otherwise.
+   */
+  approveAgentSession(sessionId: string, maxCredits?: number, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<AgentSession> {
+    return this.request<AgentSession>('POST', `/agent/sessions/${encodeURIComponent(sessionId)}/approve`, {
+      body: maxCredits === undefined ? {} : { max_credits: maxCredits },
       signal: options.signal,
       headers: options.headers
     });
@@ -4844,6 +5269,28 @@ export class GenFireClient {
   listAppSecrets(id:string):Promise<ListResponse<{name:string;type:string}>> {return this.request('GET',`/runtime/apps/${encodeURIComponent(id)}/secrets`)}
   queryAppDatabase(id:string,input:{sql:string;params?:Array<string|number|null>}):Promise<{object:'database_query';data:unknown}> {return this.request('POST',`/runtime/apps/${encodeURIComponent(id)}/query`,{body:input})}
 
+  // ── Code sandbox (/v1/sandbox/*; 503 until provisioned and enabled) ─────────
+  getSandbox():Promise<SandboxCapabilities> {return this.request('GET','/sandbox')}
+  /** Run bash in the per-project sandbox. Not retried: a command is not idempotent. */
+  sandboxExec(input:SandboxExecRequest,options:Omit<RequestOptions,'idempotencyKey'>={}):Promise<SandboxExecResult> {return this.request('POST','/sandbox/exec',{body:input,signal:options.signal,headers:options.headers})}
+  getSandboxJob(workspaceId:string,jobId:string,signal?:AbortSignal):Promise<SandboxJob> {return this.request('GET',`/sandbox/workspaces/${encodeURIComponent(workspaceId)}/jobs/${encodeURIComponent(jobId)}`,{signal})}
+  killSandboxJob(workspaceId:string,jobId:string):Promise<SandboxJob> {return this.request('POST',`/sandbox/workspaces/${encodeURIComponent(workspaceId)}/jobs/${encodeURIComponent(jobId)}/kill`)}
+  listSandboxWorkspaces():Promise<ListResponse<SandboxWorkspace>> {return this.request('GET','/sandbox/workspaces')}
+  deleteSandboxWorkspace(workspaceId:string):Promise<SandboxWorkspace & {deleted:true}> {return this.request('DELETE',`/sandbox/workspaces/${encodeURIComponent(workspaceId)}`)}
+
+  // ── Blade reference edits (/v1/blade/*; 503 until bladeV1 is on) ────────────
+  listBladePresets(signal?:AbortSignal):Promise<ListResponse<BladePreset>> {return this.request('GET','/blade/presets',{signal})}
+  getBladePreset(slug:string,signal?:AbortSignal):Promise<BladePreset> {return this.request('GET',`/blade/presets/${encodeURIComponent(slug)}`,{signal})}
+  /** Start a Blade edit. Creates a project unless project_id is given; an idempotencyKey makes retries return the same session. */
+  startBladeSession(input:BladeStartRequest,options:RequestOptions={}):Promise<BladeSessionStart> {return this.request('POST','/blade/sessions',{body:input,...options})}
+  getBladeSession(sessionId:string,signal?:AbortSignal):Promise<BladeSession> {return this.request('GET',`/blade/sessions/${encodeURIComponent(sessionId)}`,{signal})}
+  /** Your Blade sessions, newest first; page with `next_cursor`. */
+  listBladeSessions(params:BladeListSessionsParams={},signal?:AbortSignal):Promise<ListResponse<BladeSessionSummary>&{next_cursor:string|null}> {return this.request('GET','/blade/sessions',{query:{limit:params.limit,cursor:params.cursor},signal})}
+  /** Record the plan's credit estimate and the user's cap before anything bills. Records only. */
+  quoteBladeSession(sessionId:string,input:BladeQuoteRequest):Promise<BladeSession & {notes:string[]}> {return this.request('POST',`/blade/sessions/${encodeURIComponent(sessionId)}/quote`,{body:input})}
+  /** Deliver: files the final video into the project, sums the listed runs' credits, marks delivered. Idempotent. */
+  completeBladeSession(sessionId:string,input:BladeCompleteRequest):Promise<BladeSession & {delivery:BladeDelivery;notes:string[]}> {return this.request('POST',`/blade/sessions/${encodeURIComponent(sessionId)}/complete`,{body:input})}
+
   // ── Website captures ────────────────────────────────────────────────────────
 
   /**
@@ -5174,3 +5621,54 @@ export class GenFireClient {
 export const GenfireClient = GenFireClient;
 export type GenfireClient = GenFireClient;
 export type GenfireClientConfig = GenFireClientConfig;
+
+// ── Run lifecycle + exports (WS5) ───────────────────────────────────────────
+
+/** A fresh Idempotency-Key for calls that need one (exports are free, so a new key per call is safe). */
+function newIdempotencyKey(): string {
+  const uuid = (globalThis as any).crypto?.randomUUID?.();
+  return typeof uuid === 'string' ? uuid : `gf_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+export interface DeletedRun {
+  id: string;
+  object: 'run';
+  deleted: true;
+  outputs_deleted: number;
+  resources_deleted: number;
+}
+
+export type InterchangeFormat = 'fcpxml' | 'xmeml' | 'otio' | 'edl';
+export type ProExportFormat = 'prores_422_hq' | 'dnxhr_hq' | 'wav' | 'png_sequence' | 'tiff_sequence' | 'psd';
+
+export interface TimelineExportRequest {
+  /** Default: all four. */
+  formats?: InterchangeFormat[];
+  /** Bundle source media in media/ (default true). */
+  include_media?: boolean;
+}
+
+export interface ProExportRequest {
+  format: ProExportFormat;
+  /** A finished run whose media to export (all formats except psd). */
+  run_id?: string;
+  /** Or an https media URL. */
+  source_url?: string;
+  /** psd only. */
+  layer_project_id?: string;
+  /** Image sequences only. */
+  fps?: number;
+}
+
+export interface ExportFormat {
+  id: string;
+  object: 'export_format';
+  kind: 'pro' | 'timeline_interchange';
+  label: string;
+  extension: string;
+  content_type: string;
+  source: string;
+  credits: number;
+}
+
+export * from './webhooks.js';

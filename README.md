@@ -63,7 +63,7 @@ console.log(run.status, run.output);
 const queuedRun = await client.createVideoGeneration(
   {
     prompt: 'Cinematic close-up of a luxury watch with soft lighting',
-    model: 'video.veo_3_1',
+    model: 'video.kling_v4',
     aspect_ratio: '16:9',
     duration: 8,
   },
@@ -127,6 +127,44 @@ const webhook = await client.createWebhook({
 
 console.log(webhook.signing_secret);
 ```
+
+Verify deliveries with either signature scheme (Standard Webhooks `webhook-*`
+headers, or the original `X-Genfire-Signature`) — pass the RAW body:
+
+```ts
+import { verifyWebhook, WebhookVerificationError } from '@genfire/sdk';
+
+app.post('/webhooks/genfire', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const event = await verifyWebhook(req.body, req.headers, process.env.GENFIRE_WEBHOOK_SECRET!);
+    // event.type === 'run.completed' | 'run.failed' …
+    res.sendStatus(200);
+  } catch (err) {
+    if (err instanceof WebhookVerificationError) return res.sendStatus(400);
+    throw err;
+  }
+});
+```
+
+Standard Webhooks libraries work too: use `webhook.signing_secret_standard`
+(or `toStandardWebhooksSecret(signing_secret)`).
+
+## Cancel, delete and exports
+
+```ts
+await client.cancelRun(run.id);            // refunds reserved credits; run ends failed / error.code "cancelled"
+await client.deleteRun(run.id);            // removes the run and its output files
+
+// Final Cut Pro / Premiere / Resolve / Avid project files + media (free)
+const bundle = await client.waitForRun((await client.createTimelineExport(timelineId)).id);
+console.log(bundle.output?.url);
+
+// ProRes 422 HQ, DNxHR HQ, WAV 48k/24-bit, PNG/TIFF sequences, layered PSD (free)
+const master = await client.waitForRun((await client.createExport({ format: 'prores_422_hq', run_id: run.id })).id);
+console.log(master.output?.url);
+```
+
+Every 429 carries `Retry-After`; the SDK exposes it as `error.retryAfterSeconds`.
 
 ## Notes
 
