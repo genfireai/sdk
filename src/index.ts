@@ -1584,10 +1584,8 @@ export interface CreateMusicVideoRequest extends TeamBillable, ProjectFileable, 
   song_sections?: MusicVideoSongSection[];
   /** Word timings for karaoke captions on a bring-your-own track. */
   song_word_timestamps?: MusicVideoWordTimestamp[];
-  /** Only for a bring-your-own `song_url` track: transcribe it to derive lyrics
-   *  + word timestamps (required for `lyric_captions` on uploaded songs). Runs
-   *  as its own step, billed per second. No-op when `song_word_timestamps` were
-   *  supplied or an inline `song` is used; skip for instrumentals. Default false. */
+  /** @deprecated No effect. Every song is now read automatically at no charge,
+   *  so `lyric_captions` works on uploaded songs without it. */
   transcribe_lyrics?: boolean;
   /** Visual style id — see {@link GenFireClient.listMusicVideoStyles}. Required. */
   style_preset_id: string;
