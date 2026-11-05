@@ -293,6 +293,10 @@ export interface EstimateCostRequest {
   last_frame_url?: string;
   // Image
   quality?: string;
+  /** GPT Image 2.6: `gif` / `svg` price differently from `png` (see CreateImageGenerationRequest). */
+  output_format?: 'png' | 'gif' | 'svg';
+  /** GPT Image 2.6 GIF: frames asked (a GIF bills by the frames sent, at most 12). */
+  frame_count?: number;
   // 3D
   should_texture?: boolean;
   enable_pbr?: boolean;
@@ -545,7 +549,10 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
   image_urls?: string[];
   /**
    * Quality tier. `image.gpt_image_2` accepts low | medium | high | auto and
-   * prices them as a multiplier (low 1x, medium 6x, high 22x).
+   * prices them as a multiplier (low 1x, medium 6x, high 22x); so do the
+   * `image.gpt_image_25_*` tiers. `image.gpt_image_26_*` price on their own
+   * ladder (low 4x, medium 20x, high 22x — 2.6 renders more at low and
+   * medium); xhigh / max run as high.
    * `image.grok_imagine_2` accepts low | medium ONLY, priced as two separate
    * base rates. `image.ideogram_v4_5` and `image.ideogram_vector` accept
    * low | medium | high, each tier its own price (`image.ideogram_vector`'s
@@ -571,6 +578,33 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
    * without a source image returns 400 `edit_precision_requires_source_image`.
    */
   edit_precision?: 'regular' | 'high';
+  /**
+   * GPT Image 2.6 only (`image.gpt_image_26_flare` / `image.gpt_image_26_sunburst`).
+   * `png` (default) is a normal image; `gif` an animated GIF and `svg` a
+   * vector file — each makes ONE output per run (`count` folds to 1). SVG
+   * works from the text prompt alone: with any source image it is a 400
+   * `svg_requires_text_to_image`. jpeg / webp run as png; other models ignore it.
+   */
+  output_format?: 'png' | 'gif' | 'svg';
+  /** GPT Image 2.6 GIF only: frames, 2–16 asked (default 9). At most 12 fit fal's pixel budget, so 13–16 are sent and billed as 12. */
+  frame_count?: number;
+  /** GPT Image 2.6 GIF only: milliseconds per frame, 20–2000 on a 10 ms grid (default 200). */
+  frame_duration_ms?: number;
+  /**
+   * GPT Image 2.6 only: how much the model plans before drawing — `high`
+   * (default) reads dense text and complex layouts best, `low` is fastest.
+   * No extra charge.
+   */
+  reasoning_effort?: 'low' | 'medium' | 'high';
+  /** OpenAI's name for `reasoning_effort`; an explicit `reasoning_effort` wins. */
+  complexity?: 'low' | 'medium' | 'high';
+  /**
+   * GPT Image 2.6 edits only: a transparent PNG of annotations (arrows,
+   * circles, notes) that steers the edit of the first source image. Resized
+   * to that image server-side. With a `mask_url` the mask wins and the markup
+   * is dropped (noted on the response); without a source image it is dropped.
+   */
+  markup_image_url?: string;
   /**
    * Optional `[{ handle, influencer_id }]`. When supplied, the model auto-switches
    * to its edit variant and the influencer's reference photos are injected as
@@ -997,6 +1031,11 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * changes its light: at least ~2.4 s (over 15 s runs its first 15 s), no
    * `prompt` (ignored) and no `duration`, billed per second of the clip the
    * same way.
+   * On `video.kling_v4` / `video.kling_v4_flash` it switches the run to the
+   * Kling 4.0 video EDIT (3–30 s source; Flash 3–20 s): the output follows the
+   * source's length unless `duration` is sent, the source counts as input
+   * seconds, and a `reference_video_trims` entry keyed by the source's `url`
+   * picks its window.
    */
   source_video_url?: string;
   /**
