@@ -889,10 +889,11 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    */
   reference_image_urls?: string[];
   /**
-   * Reference CLIPS — Seedance, Hailuo 03, Wan 3.0 and Gemini Omni Flash 1.1
+   * Reference CLIPS — Seedance, Hailuo 03, Wan 3.0 and Gemini Omni Flash 1.1 / 1.2
    * only (`limits.max_reference_videos` in `listModels()`):
    * - up to 3 on `video.hailuo_03`, `video.hailuo_03_max`, the
-   *   `video.seedance_2_0*` models and `video.gemini_omni_flash_v11`; up to 3
+   *   `video.seedance_2_0*` models, `video.gemini_omni_flash_v12` (15 s each)
+   *   and `video.gemini_omni_flash_v11`; up to 3
    *   on `video.hailuo_03_max_insert` (15 s total), where they guide the
    *   inserted scene;
    * - up to 10 on `video.seedance_2_5`: each 2–30 s after any trim, 30 s
