@@ -185,7 +185,10 @@ export interface ModelCapabilities {
    * so they are optional: a `Model` read from an older deployment will not
    * carry them, and `capabilities.x === true` is the only safe test.
    */
-  /** Image-to-video accepts an `end_image_url` the clip lands on. */
+  /**
+   * Image-to-video accepts an `end_image_url` the clip lands on (Kling O3 and
+   * Kling 4.0 also take it beside references on their reference endpoints).
+   */
   end_frame?: boolean;
   /** Accepts `reference_video_urls` / `reference_audio_urls`. */
   reference_media?: boolean;
@@ -581,9 +584,9 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
   /**
    * GPT Image 2.6 only (`image.gpt_image_26_flare` / `image.gpt_image_26_sunburst`).
    * `png` (default) is a normal image; `gif` an animated GIF and `svg` a
-   * vector file — each makes ONE output per run (`count` folds to 1). SVG
-   * works from the text prompt alone: with any source image it is a 400
-   * `svg_requires_text_to_image`. jpeg / webp run as png; other models ignore it.
+   * vector file — each makes ONE output per run (`count` folds to 1). An SVG
+   * with source images renders the edit, then vectorizes it (billed as the
+   * edit plus the vectorizer). jpeg / webp run as png; other models ignore it.
    */
   output_format?: 'png' | 'gif' | 'svg';
   /** GPT Image 2.6 GIF only: frames, 2–16 asked (default 9). At most 12 fit fal's pixel budget, so 13–16 are sent and billed as 12. */
@@ -859,8 +862,12 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * Last frame the clip lands on, paired with `image_url` for image-to-video:
    * the video interpolates from the start image to this one. Supported by every
    * model whose `capabilities.endFrame` is true in `listModels()` — the Seedance
-   * (2.0 all tiers, 2.5), Kling V3/O3/2.6, and Hailuo 03 / Hailuo 02 Standard
-   * families. Sending it to another model, or without `image_url`, is a 400.
+   * (2.0 all tiers, 2.5), Kling V3/O3/2.6/4.0, and Hailuo 03 / Hailuo 02 Standard
+   * families. Sending it to another model, or without `image_url`, is a 400 —
+   * except Kling 4.0 (`video.kling_v4`, not Flash), which also takes it beside
+   * `reference_image_urls` / `reference_video_urls` / `elements` with or
+   * without a start frame (each frame counts toward its 10 images; frames that
+   * push a full pool over leave the last reference images out).
    */
   end_image_url?: string;
   /**
