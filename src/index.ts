@@ -547,6 +547,8 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
    * 3 with a mask); Grok uses at most the first 3. `image.ideogram_vector`
    * reads up to 5 as references for a new SVG (the first is the primary).
    * `image.krea_3` reads up to 8 (the first is the source) and bills each one.
+   * `image.minimax_h3_image` / `image.minimax_h3_image_highspeed` read up to
+   * 16 (cited in the prompt as Image 1, Image 2, … in order) and bill each one.
    * Routes through the model's edit variant.
    */
   image_urls?: string[];
@@ -572,6 +574,8 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
    * 1K | 2K, defaults to 1K, and 2K costs 4x. `image.seedream_v55` accepts
    * 1K | 1.5K | 2K | 3K (default 2K; 4K runs at 3K), priced per tier —
    * 1.5K and 3K are refused on every other model.
+   * `image.minimax_h3_image` / `image.minimax_h3_image_highspeed` accept
+   * 1K | 2K | 4K (default 2K); 1K and 2K cost the same, 4K costs more.
    */
   resolution?: '1K' | '1.5K' | '2K' | '3K' | '4K';
   /**
