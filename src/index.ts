@@ -296,8 +296,8 @@ export interface EstimateCostRequest {
   last_frame_url?: string;
   // Image
   quality?: string;
-  /** GPT Image 2.6: `gif` / `svg` price differently from `png` (see CreateImageGenerationRequest). */
-  output_format?: 'png' | 'gif' | 'svg';
+  /** GPT Image 2.6: `gif` / `svg` price differently from `png` (see CreateImageGenerationRequest). Seedream 5.5's `jpeg` prices as `png`. */
+  output_format?: 'png' | 'gif' | 'svg' | 'jpeg';
   /** GPT Image 2.6 GIF: frames asked (a GIF bills by the frames sent, at most 12). */
   frame_count?: number;
   // 3D
@@ -569,9 +569,11 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
    * image.nano_banana_2, image.nano_banana_2_1 and image.nano_banana_pro accept
    * 1K | 2K | 4K on both paths too. `image.ideogram_v4_5` accepts 1K | 2K,
    * defaults to 2K, and charges the same for both. `image.krea_3` accepts
-   * 1K | 2K, defaults to 1K, and 2K costs 4x.
+   * 1K | 2K, defaults to 1K, and 2K costs 4x. `image.seedream_v55` accepts
+   * 1K | 1.5K | 2K | 3K (default 2K; 4K runs at 3K), priced per tier —
+   * 1.5K and 3K are refused on every other model.
    */
-  resolution?: '1K' | '2K' | '4K';
+  resolution?: '1K' | '1.5K' | '2K' | '3K' | '4K';
   /**
    * Ideogram 4.5 edits only (`image.ideogram_v4_5` with `image_url` /
    * `image_urls`). `high` is Ideogram's Precise Edit: it changes only what the
@@ -587,8 +589,10 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
    * vector file — each makes ONE output per run (`count` folds to 1). An SVG
    * with source images renders the edit, then vectorizes it (billed as the
    * edit plus the vectorizer). jpeg / webp run as png; other models ignore it.
+   * `image.seedream_v55` reads `png` (default) or `jpeg` (same price; with
+   * `background: 'transparent'` it saves png).
    */
-  output_format?: 'png' | 'gif' | 'svg';
+  output_format?: 'png' | 'gif' | 'svg' | 'jpeg';
   /** GPT Image 2.6 GIF only: frames, 2–16 asked (default 9). At most 12 fit fal's pixel budget, so 13–16 are sent and billed as 12. */
   frame_count?: number;
   /** GPT Image 2.6 GIF only: milliseconds per frame, 20–2000 on a 10 ms grid (default 200). */
@@ -608,6 +612,13 @@ export interface CreateImageGenerationRequest extends TeamBillable, ProjectFilea
    * is dropped (noted on the response); without a source image it is dropped.
    */
   markup_image_url?: string;
+  /**
+   * Seedream 5.5 only (`image.seedream_v55`). `transparent` returns a PNG with
+   * an alpha channel (logos, stickers, cut-outs); `opaque` always fills the
+   * background; `auto` (default) lets the model decide. Same price; other
+   * models ignore it. The run output echoes it.
+   */
+  background?: 'auto' | 'transparent' | 'opaque';
   /**
    * Optional `[{ handle, influencer_id }]`. When supplied, the model auto-switches
    * to its edit variant and the influencer's reference photos are injected as
@@ -821,7 +832,7 @@ export interface CreateGameGenerationRequest {
   prompt: string;
   /** Iterate on an existing game: its `game_id` from a prior generation. Re-generates in place at the same `play_url`. */
   game_id?: string;
-  /** Codegen model alias (e.g. `claude-opus-5-5`, `gpt-6-sol`). Defaults to `claude-fable-5-1`. */
+  /** Codegen model alias (e.g. `claude-opus-5-5`, `gpt-6-sol`). Defaults to `claude-fable-5-2`. */
   model?: string;
   /** Up to 16 asset URLs (images / GLB / audio) to wire into the game. */
   asset_urls?: string[];
