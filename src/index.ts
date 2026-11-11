@@ -2587,10 +2587,15 @@ export interface UpscaleVideoRequest extends TeamBillable, Quotable {
    * is a classical super-resolution pass at 2x/4x. Flux is a FLUX 3 diffusion
    * pass at 1.5x-3x with a precise/creative mode — better detail, several
    * times the credit cost, and limited to MP4 sources under 20s and 50MB.
+   * LTX 2.5 (`video_upscale.ltx_2_5`) takes a target `resolution` (1080p, 4k
+   * or 8k) instead of a factor; H.264/HEVC sources up to 200MB, short side at
+   * least 480px, at most 601 frames at 4k and 241 at 8k.
    */
-  model?: 'video_upscale.topaz' | 'video_upscale.flux_video_upscale';
-  /** Topaz: 2 or 4. Flux: any value from 1.5 to 3. Default 2. */
+  model?: 'video_upscale.topaz' | 'video_upscale.flux_video_upscale' | 'video_upscale.ltx_2_5';
+  /** Topaz: 2 or 4. Flux: any value from 1.5 to 3. Default 2. Ignored by LTX 2.5. */
   scale_factor?: number;
+  /** LTX 2.5 only: the output tier. Default `4k`. */
+  resolution?: '1080p' | '4k' | '8k';
   /** Flux only. `precise` stays faithful to the source; `creative` (default) adds detail. */
   mode?: 'precise' | 'creative';
   /** Flux only, optional. Guides the creative pass. */
@@ -5028,7 +5033,8 @@ export class GenFireClient {
    *
    * Defaults to Topaz at 2×. Pass `model: 'video_upscale.flux_video_upscale'`
    * for the FLUX 3 engine, which accepts a fractional `scale_factor` from 1.5
-   * to 3, a `mode`, and an optional guiding `prompt`.
+   * to 3, a `mode`, and an optional guiding `prompt`; or
+   * `model: 'video_upscale.ltx_2_5'` with a `resolution` of 1080p, 4k or 8k.
    */
   upscaleVideo(input: UpscaleVideoRequest, options: RequestOptions = {}): Promise<Run> {
     return this.request<Run>('POST', '/videos/upscale', {
