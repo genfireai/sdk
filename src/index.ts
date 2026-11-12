@@ -313,6 +313,8 @@ export interface EstimateCostRequest {
   music_length_ms?: number;
   include_details?: boolean;
   with_timestamps?: boolean;
+  /** ElevenLabs music audio reference — its (≤30 s) seconds price on top of the song. */
+  reference_audio_url?: string;
   // Lipsync
   audio_url?: string;
   audio_base64?: string;
@@ -1243,13 +1245,118 @@ export interface CreateMusicRequest extends TeamBillable, ProjectFileable, Quota
    * none of its own. Structure tags ([intro], [verse], [pre-chorus], [chorus],
    * [post-chorus], [bridge], [instrumental], [solo], [outro]) must each be on
    * their own line; Genfire re-splits a tag sharing a line with lyric text so
-   * nothing is silently dropped. Ignored by ElevenLabs and both Lyria models.
+   * nothing is silently dropped. ElevenLabs prompt mode sings them as written
+   * (≤4000 characters — longer is cut, with a note); ignored by both Lyria models.
    */
   lyrics?: string;
   /** Flow-matching Euler steps per 8s chunk, 1–100 (default 30). MiniMax Music 3 only. */
   num_inference_steps?: number;
   /** Classifier-free guidance scale, 0–20 (default 1.7). MiniMax Music 3 only. */
   guidance_scale?: number;
+  /**
+   * ElevenLabs only — sing with a VOCAL (a consistent singer) or STYLE (a
+   * trained sound): an id from {@link GenFireClient.listMusicVocals}. Must be
+   * `completed`. With no `model`, the song runs on the vocal's base model.
+   */
+  finetune_id?: string;
+  /** Alias of {@link finetune_id}. */
+  vocal_id?: string;
+  /** With a finetune: how strongly to apply it, 0–2 (default 1). Out-of-range values are clamped. */
+  finetune_strength?: number;
+  /** ElevenLabs only — `track` (default), `loop` (seamless) or `ambience` (beatless bed). */
+  generation_mode?: MusicGenerationMode;
+  /** ElevenLabs only — sing proper names phonetically. */
+  use_phonetic_names?: boolean;
+  /** ElevenLabs only, with include_details — return `output.waveform` (peaks for a waveform view). */
+  with_waveform?: boolean;
+  /**
+   * ElevenLabs prompt / plan mode — an AUDIO REFERENCE that steers genre,
+   * groove and instrumentation. Up to 30 s of it is used (from
+   * `reference_start_ms`); its seconds bill on top of the song. Not with video_url.
+   */
+  reference_audio_url?: string;
+  /** Where the 30-second reference window starts, in ms (default 0). */
+  reference_start_ms?: number;
+  /** How closely to follow the reference: `low` | `medium` | `high` | `xhigh`. */
+  condition_strength?: MusicConditionStrength;
+  /** Video-to-music only — add sound effects cued to the footage. */
+  add_sfx?: boolean;
+  /** Video-to-music + add_sfx — deliver music and SFX as separate files (`output.sfx_url`). */
+  separate_tracks?: boolean;
+  /** Video-to-music only — follow the video's own soundtrack as a reference. */
+  use_audio_as_reference?: boolean;
+}
+
+export type MusicGenerationMode = 'track' | 'loop' | 'ambience';
+export type MusicConditionStrength = 'low' | 'medium' | 'high' | 'xhigh';
+
+/** A music VOCAL (singer) or STYLE (sound) — pass `id` as `finetune_id` on {@link GenFireClient.createMusic}. */
+export interface MusicVocal {
+  id: string;
+  object: 'music_vocal';
+  name: string;
+  kind: 'vocal' | 'style';
+  /** `curated` = Genfire's catalog (usable by everyone); `own` = trained by you, private to you. */
+  source: 'curated' | 'own';
+  /** Public id of the music model the vocal runs on. */
+  model: string | null;
+  primary_genre: string | null;
+  tags: string[];
+  voice_gender: string | null;
+  /** Only `completed` can sing. A custom vocal goes pending → in_progress → completed (or failed). */
+  status: string;
+  training_progress: number | null;
+  failure_reason: string | null;
+  created_at: string | null;
+  /** A hosted ~15 s mp3 sample of the vocal/style (does not expire), or null when none exists yet. */
+  preview_url: string | null;
+}
+
+export interface ListMusicVocalsOptions {
+  kind?: 'vocal' | 'style';
+  source?: 'curated' | 'own';
+  signal?: AbortSignal;
+}
+
+export interface CreateMusicVocalRequest extends TeamBillable, Quotable {
+  /** Display name, 5–200 characters. */
+  name: string;
+  /** Main genre of the tracks, e.g. `pop`. */
+  primary_genre: string;
+  /** 1–50 of YOUR OWN tracks (10–600 s each). Copyright-screened upstream; a rejected training is not refunded. */
+  track_urls: string[];
+  /** `vocal` (default) = a singer · `style` = a sound. */
+  kind?: 'vocal' | 'style';
+  tags?: string[];
+}
+
+/** The training run plus the vocal it created (status `pending` until it can sing). */
+export interface MusicVocalTrainingRun extends Run {
+  vocal?: MusicVocal;
+}
+
+export type StemVariation = 'two_stems_v1' | 'six_stems_v1';
+
+/** Not project-fileable (a split returns several files): `project_id` is a 400. */
+export interface CreateStemSeparationRequest extends TeamBillable, Quotable {
+  /** The song to split. */
+  audio_url: string;
+  /** `six_stems_v1` (default: vocals, drums, bass, guitar, piano, other) or `two_stems_v1` (vocals + instrumental). Same price per second. */
+  stem_variation?: StemVariation;
+  title?: string;
+  output_format?: string;
+}
+
+/** Price of a model-less audio operation (vocal training, stem separation). */
+export interface AudioOperationCostEstimate extends PriceQuote {
+  object: 'cost_estimate';
+  capability: string;
+}
+
+export interface EstimateStemSeparationRequest {
+  /** Seconds of source audio. Or send audio_url to have it measured. */
+  duration_seconds?: number;
+  audio_url?: string;
 }
 
 /** Background-music config for a faceless reel. */
@@ -2142,6 +2249,7 @@ export interface PictureBook {
 
 export interface CreateSoundEffectRequest extends TeamBillable, ProjectFileable, Quotable {
   prompt: string;
+  /** `sfx.elevenlabs_v3` (default, Text to Sound v3) or `sfx.elevenlabs_v1` (Text to Sound v2, removed 2027-03-01). */
   model?: string;
   duration_seconds?: number;
   output_format?: string;
@@ -4529,6 +4637,74 @@ export class GenFireClient {
 
   createSoundEffect(input: CreateSoundEffectRequest, options: RequestOptions = {}): Promise<Run> {
     return this.request<Run>('POST', '/audio/sfx', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Music vocals & styles (ElevenLabs Music Finetunes) ─────────────────────
+
+  /**
+   * List the VOCALS (singers) and STYLES (sounds) a song can use: every
+   * curated one plus your own. Pass a `completed` entry's `id` as
+   * `finetune_id` on {@link createMusic}. Free.
+   */
+  listMusicVocals(options: ListMusicVocalsOptions = {}): Promise<ListResponse<MusicVocal>> {
+    const query = new URLSearchParams();
+    if (options.kind) query.set('kind', options.kind);
+    if (options.source) query.set('source', options.source);
+    const qs = query.toString();
+    return this.request<ListResponse<MusicVocal>>('GET', qs ? `/audio/music/vocals?${qs}` : '/audio/music/vocals', { signal: options.signal });
+  }
+
+  /** One vocal by id — poll a custom vocal here until `status` is `completed`. */
+  getMusicVocal(vocalId: string, signal?: AbortSignal): Promise<MusicVocal> {
+    return this.request<MusicVocal>('GET', `/audio/music/vocals/${encodeURIComponent(vocalId)}`, { signal });
+  }
+
+  /** The flat price of training a custom vocal, with a `quote_token` for {@link createMusicVocal}. */
+  estimateMusicVocalCost(signal?: AbortSignal): Promise<AudioOperationCostEstimate> {
+    return this.request<AudioOperationCostEstimate>('POST', '/audio/music/vocals/estimate-cost', { body: {}, signal });
+  }
+
+  /**
+   * Train a custom VOCAL or STYLE from your own tracks. **Billable** (flat,
+   * once): returns the run plus `vocal` in `pending`; training takes ~5–10
+   * minutes — poll {@link getMusicVocal}. A replay with the same idempotency
+   * key returns the same run and never trains twice.
+   */
+  createMusicVocal(input: CreateMusicVocalRequest, options: RequestOptions = {}): Promise<MusicVocalTrainingRun> {
+    return this.request<MusicVocalTrainingRun>('POST', '/audio/music/vocals', {
+      body: input,
+      idempotencyKey: options.idempotencyKey,
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  /** Delete one of YOUR vocals. Not refunded; songs already made with it are unaffected. */
+  async deleteMusicVocal(vocalId: string, options: Omit<RequestOptions, 'idempotencyKey'> = {}): Promise<void> {
+    await this.request<void>('DELETE', `/audio/music/vocals/${encodeURIComponent(vocalId)}`, {
+      signal: options.signal,
+      headers: options.headers
+    });
+  }
+
+  // ── Stem separation ────────────────────────────────────────────────────────
+
+  /** Price a stem separation by duration, or by `audio_url` (measured server-side). */
+  estimateStemSeparationCost(input: EstimateStemSeparationRequest, signal?: AbortSignal): Promise<AudioOperationCostEstimate> {
+    return this.request<AudioOperationCostEstimate>('POST', '/audio/stem-separations/estimate-cost', { body: input, signal });
+  }
+
+  /**
+   * Split a song into stems. **Billable** per second of the source. The
+   * completed run's output carries `stems[{ name, audio_url, audio_id }]`.
+   */
+  createStemSeparation(input: CreateStemSeparationRequest, options: RequestOptions = {}): Promise<Run> {
+    return this.request<Run>('POST', '/audio/stem-separations', {
       body: input,
       idempotencyKey: options.idempotencyKey,
       signal: options.signal,
