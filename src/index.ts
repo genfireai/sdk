@@ -210,13 +210,15 @@ export interface ModelCapabilities {
   video_task?: boolean;
   /**
    * The model takes `bitrate_mode` (`standard` | `high`) — Seedance 2.0 and
-   * 2.0 Fast. False everywhere else (`video.seedance_2_5` included), where a
+   * 2.0 Fast. False everywhere else (`video.seedance_2_5` and
+   * `video.seedance_2_5_flash` included), where a
    * `bitrate_mode` you send has no effect and is ignored.
    */
   bitrate_mode?: boolean;
   /**
    * Seedance 2.5 draft: accepts `draft: true` (a 480p preview at the 480p
    * price) whose 1080p final {@link GenFireClient.renderDraftFinal} renders.
+   * False on Seedance 2.5 Flash (`video.seedance_2_5_flash`).
    */
   draft?: boolean;
   /**
@@ -271,7 +273,7 @@ export interface EstimateCostRequest {
   follow_source?: boolean;
   /**
    * Send exactly what the generation will send: on a one-clip
-   * `video.seedance_2_5` reference run the ratio decides whether an omitted
+   * `video.seedance_2_5` / `video.seedance_2_5_flash` reference run the ratio decides whether an omitted
    * duration follows the clip (omitted / `'auto'` / the clip's own) or is 5 s, so it changes
    * the price — and a quote made without it is not spendable on a run with it.
    */
@@ -856,14 +858,14 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
   prompt: string;
   model?: string;
   /**
-   * Default `16:9` — except on `video.seedance_2_5` with exactly ONE
+   * Default `16:9` — except on `video.seedance_2_5` / `video.seedance_2_5_flash` with exactly ONE
    * `reference_video_urls` clip and `task` `reference` / omitted / `editing`,
    * where an omitted ratio follows the clip (`auto`). On a one-clip reference
    * run a ratio other than `'auto'` or the clip's own also stops the LENGTH following the clip.
    */
   aspect_ratio?: string;
   /**
-   * Seconds. Default 5. On `video.seedance_2_5`, `'auto'` means the same as
+   * Seconds. Default 5. On `video.seedance_2_5` / `video.seedance_2_5_flash`, `'auto'` means the same as
    * omitting it — never a length the model picks: with exactly ONE
    * `reference_video_urls` clip, `task` `reference` / omitted and
    * `aspect_ratio` omitted, `'auto'` or the clip's own ratio, it follows the
@@ -879,7 +881,7 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * Last frame the clip lands on, paired with `image_url` for image-to-video:
    * the video interpolates from the start image to this one. Supported by every
    * model whose `capabilities.endFrame` is true in `listModels()` — the Seedance
-   * (2.0 all tiers, 2.5), Kling V3/O3/2.6/4.0, and Hailuo 03 / Hailuo 02 Standard
+   * (2.0 all tiers, 2.5, 2.5 Flash), Kling V3/O3/2.6/4.0, and Hailuo 03 / Hailuo 02 Standard
    * families. Sending it to another model, or without `image_url`, is a 400 —
    * except Kling 4.0 (`video.kling_v4`, not Flash), which also takes it beside
    * `reference_image_urls` / `reference_video_urls` / `elements` with or
@@ -890,12 +892,12 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
   /**
    * Reference images for reference-to-video mode. The cap is per model
    * (`limits.max_reference_images` in `listModels()`): up to 9 on most models,
-   * 30 on `video.seedance_2_5`, 10 on the `video.wan_3*` tiers and both Gemini
+   * 30 on `video.seedance_2_5`, 10 on `video.seedance_2_5_flash`, the `video.wan_3*` tiers and both Gemini
    * Omni Flash tiers. Cite them in the prompt as `Image 1`, `Image 2`, …
    * (Hailuo 03, Wan 3.0) or `@Image1`, `@Image2`, … (Seedance). On
-   * `video.seedance_2_5` an `image_url` sent alongside any reference media is
+   * `video.seedance_2_5` / `video.seedance_2_5_flash` an `image_url` sent alongside any reference media is
    * not animated as a start frame: it is appended after these images as the
-   * next `@ImageN` (a 400 only when the 30-image pool is already full) — send
+   * next `@ImageN` (a 400 only when the image pool is already full) — send
    * `image_url` without reference media to animate a frame. On H3 Max Recast
    * (`video.hailuo_03_max_recast`) they are the new CAST and REQUIRED: 1–4
    * photos, one per person, replacing the main people in `source_video_url`
@@ -917,6 +919,7 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    *   COMBINED across the pool, duplicate URLs de-duplicated. `task`
    *   `editing` / `extension` take EXACTLY one clip, and an edit clip must
    *   run at least 4 s;
+   * - up to 5 on `video.seedance_2_5_flash`, under the same 2.5 rules;
    * - up to 5 on `video.wan_3` / `video.wan_3_prime` (15 s total).
    * Cite them as `Video 1`, `Video 2`, … (Hailuo 03, Wan 3.0) or `@Video1`,
    * `@Video2`, … (Seedance).
@@ -928,7 +931,7 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * 0-based into `reference_video_urls` (or name the clip by `url`); seconds.
    * Only the window is sent (cut server-side, audio kept). Must fit the model's
    * per-clip cap (3s Omni Flash 1.1, 15s Hailuo 03 / Wan 3.0 — 15s total across
-   * the Wan pool — 30s Seedance 2.0, 2–30 s on Seedance 2.5 where every window
+   * the Wan pool — 30s Seedance 2.0, 2–30 s on Seedance 2.5 / 2.5 Flash where every window
    * shares the 30 s pool) or the request is a 400
    * `invalid_reference_video_trims`.
    */
@@ -938,7 +941,8 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * (`limits.max_reference_audio` in `listModels()`): up to 3 on
    * `video.hailuo_03`, `video.hailuo_03_max` and the `video.seedance_2_0*`
    * models (2–15 s each); up to 10 on `video.seedance_2_5` (2–30 s each,
-   * ≤ 15 MB each, 30 s combined); up to 5 on `video.wan_3` /
+   * ≤ 15 MB each, 30 s combined); up to 5 on `video.seedance_2_5_flash`
+   * (same rules); up to 5 on `video.wan_3` /
    * `video.wan_3_prime` (15 s total). Cite them in the prompt as `Audio 1`, …
    * (Hailuo 03, Wan 3.0) or `@Audio1`, … (Seedance). This is how an on-camera
    * character gets a consistent voice — e.g. "the woman in Image 1 speaks with
@@ -956,7 +960,7 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * Output ENCODE quality: 'standard' or 'high'. 'high' requests a larger,
    * higher-quality file at no extra credit cost. Declared by
    * `video.seedance_2_0` and `video.seedance_2_0_fast`; on every other model
-   * (`video.seedance_2_5`, `video.seedance_2_0_mini`, every non-Seedance
+   * (`video.seedance_2_5`, `video.seedance_2_5_flash`, `video.seedance_2_0_mini`, every non-Seedance
    * model — `capabilities.bitrate_mode` is false) it has no effect and is
    * ignored, whichever value you send. Any value other than `'standard'` /
    * `'high'` is a 400 `invalid_bitrate_mode`. Filter on
@@ -964,7 +968,8 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    */
   bitrate_mode?: 'standard' | 'high';
   /**
-   * GENFIRE GENJUDO — motion transfer and video edit. `video.seedance_2_5` only
+   * GENFIRE GENJUDO — motion transfer and video edit. `video.seedance_2_5` and
+   * its faster, cheaper 480p / 720p tier `video.seedance_2_5_flash` only
    * (`capabilities.video_task` in `listModels()`); any other model is a 400
    * `unsupported_task`.
    *
@@ -990,7 +995,8 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    */
   task?: 'reference' | 'editing' | 'extension';
   /**
-   * GENFIRE GENJUDO — keep the CLIP'S OWN SOUND. `video.seedance_2_5` with a
+   * GENFIRE GENJUDO — keep the CLIP'S OWN SOUND. `video.seedance_2_5` (or
+   * `video.seedance_2_5_flash`) with a
    * `reference_video_urls` clip, `task` `reference` / omitted / `editing`
    * (ignored on `extension`, whose new seconds have no source sound, and when
    * no clip is sent). The clip
@@ -1005,7 +1011,8 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    */
   keep_source_audio?: boolean;
   /**
-   * GENFIRE GENJUDO "Match the clip" — `video.seedance_2_5`, `task`
+   * GENFIRE GENJUDO "Match the clip" — `video.seedance_2_5` (or
+   * `video.seedance_2_5_flash`), `task`
    * `reference` with a clip: the output frame and length follow the clip, so a
    * motion-transfer prompt that reads like an edit ("replace the person in
    * @Video1…") runs instead of being refused. It REPLACES any `duration` you
@@ -1018,7 +1025,8 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
   follow_source?: boolean;
   /**
    * Seedance 2.5 DRAFT — `video.seedance_2_5` only (`capabilities.draft` in
-   * `listModels()`); any other model is a 400 `unsupported_draft`. `true`
+   * `listModels()`); any other model — `video.seedance_2_5_flash` included —
+   * is a 400 `unsupported_draft`. `true`
    * renders a 480p PREVIEW billed at the 480p price (text-, image- and
    * reference-to-video, `task` included); `resolution` is ignored. When it
    * looks right, {@link GenFireClient.renderDraftFinal} with this run's id
@@ -1799,8 +1807,8 @@ export interface MusicVideoCostEstimate {
 /** A music-video visual style preset, accepted as `style_preset_id`. */
 // ── Genfire Genjudo (motion transfer & video edit) ───────────────────────────────
 //
-// Both halves are ONE `createVideoGeneration` call on `video.seedance_2_5` with
-// a different `task`. These two catalogs are the recipe book: prompts already
+// Both halves are ONE `createVideoGeneration` call on `video.seedance_2_5` (or
+// its speed tier `video.seedance_2_5_flash`) with a different `task`. These two catalogs are the recipe book: prompts already
 // written in the `@Video1` / `@Image1` citation idiom the model binds on.
 
 export type GenjudoEditGroup = 'relight' | 'swap' | 'reframe' | 'cleanup' | 'restyle' | 'draw';
@@ -4581,7 +4589,8 @@ export class GenFireClient {
    *   reference_image_urls: ['https://…/new-bottle.png'] // @Image1
    * });
    * ```
-   * An editing run follows the source clip, so omit `aspect_ratio` and `duration`.
+   * `model: 'video.seedance_2_5_flash'` runs the same recipe faster and cheaper,
+   * at 480p / 720p. An editing run follows the source clip, so omit `aspect_ratio` and `duration`.
    * A one-clip motion transfer matches the clip by default too (its frame and
    * length, and its own sound — when it has one and no reference audio is
    * sent — unless you send `generate_audio` or `keep_source_audio: false`).
