@@ -1287,6 +1287,14 @@ export interface CreateMusicRequest extends TeamBillable, ProjectFileable, Quota
   reference_start_ms?: number;
   /** How closely to follow the reference: `low` | `medium` | `high` | `xhigh`. */
   condition_strength?: MusicConditionStrength;
+  /**
+   * A melody for the song to follow, on the models that take one (see the
+   * model's description from `GET /models`). Replaces the prompt and any
+   * `reference_audio_url` on those models; the uploaded file adds a small fee.
+   */
+  melody_audio_url?: string;
+  /** The singer's gender, on the models that take it (applied with `lyrics`). */
+  vocal_gender?: 'female' | 'male';
   /** Video-to-music only — add sound effects cued to the footage. */
   add_sfx?: boolean;
   /** Video-to-music + add_sfx — deliver music and SFX as separate files (`output.sfx_url`). */
