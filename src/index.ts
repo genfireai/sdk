@@ -217,7 +217,7 @@ export interface ModelCapabilities {
   bitrate_mode?: boolean;
   /**
    * Seedance 2.5 draft: accepts `draft: true` (a 480p preview at the 480p
-   * price) whose 1080p final {@link GenFireClient.renderDraftFinal} renders.
+   * price) whose 1080p or 4k final {@link GenFireClient.renderDraftFinal} renders.
    * False on Seedance 2.5 Flash (`video.seedance_2_5_flash`).
    */
   draft?: boolean;
@@ -332,18 +332,33 @@ export interface CostEstimate extends PriceQuote {
   breakdown: Record<string, unknown>;
 }
 
+/** What a Seedance 2.5 draft's final renders at. The API reads `2160p` as 4k and anything else as 1080p. */
+export type DraftFinalResolution = '1080p' | '4k';
+
 /** Body of {@link GenFireClient.renderDraftFinal}. Everything else comes from the draft. */
-export interface RenderDraftFinalRequest extends ProjectFileable {}
+export interface RenderDraftFinalRequest extends ProjectFileable {
+  /** `1080p` (default) or `4k`. A 4k final costs what a direct 4k render of the draft's request costs. */
+  resolution?: DraftFinalResolution;
+}
+
+/** Options for {@link GenFireClient.estimateDraftFinal}. */
+export interface EstimateDraftFinalOptions {
+  /** The final to price: `1080p` (default) or `4k`. */
+  resolution?: DraftFinalResolution;
+  signal?: AbortSignal;
+}
 
 /** What {@link GenFireClient.estimateDraftFinal} returns. */
 export interface DraftFinalEstimate {
   object: 'cost_estimate';
   model: string;
   capability: 'video_generation';
-  /** Exact credits the 1080p final will reserve. */
+  /** Exact credits the final will reserve at {@link DraftFinalEstimate.resolution}. */
   credits: number;
   unit: string;
   breakdown: Record<string, unknown>;
+  /** The resolution this price is for. */
+  resolution?: DraftFinalResolution;
   /** The draft's video id (what a run id resolves to). */
   draft_video_id: string;
   /** The draft's run id, when you passed one. */
@@ -1030,8 +1045,8 @@ export interface CreateVideoGenerationRequest extends TeamBillable, ProjectFilea
    * renders a 480p PREVIEW billed at the 480p price (text-, image- and
    * reference-to-video, `task` included); `resolution` is ignored. When it
    * looks right, {@link GenFireClient.renderDraftFinal} with this run's id
-   * renders the SAME shot as a native 1080p video — for 7 days from the
-   * draft's creation, as many times as you like.
+   * renders the SAME shot as a native 1080p (or 4k) video — for 7 days from
+   * the draft's creation, as many times as you like.
    */
   draft?: boolean;
   /**
@@ -4539,14 +4554,15 @@ export class GenFireClient {
     });
   }
 
-  // ── Seedance 2.5 draft → 1080p final ────────────────────────────────────────
+  // ── Seedance 2.5 draft → 1080p / 4k final ───────────────────────────────────
 
   /**
-   * Render the native 1080p FINAL of a Seedance 2.5 draft — a
-   * {@link createVideoGeneration} run made with `draft: true`. The SAME shot
-   * (prompt, references, duration, aspect ratio, audio) is re-rendered as
-   * a NEW video run; poll it like any other. Bills what a direct 1080p render of
-   * the draft's request costs — price it with {@link estimateDraftFinal} first —
+   * Render the native 1080p — or, with `{ resolution: '4k' }`, 4k — FINAL of a
+   * Seedance 2.5 draft: a {@link createVideoGeneration} run made with
+   * `draft: true`. The SAME shot (prompt, references, duration, aspect ratio,
+   * seed, audio) is re-rendered as a NEW video run; poll it like any other.
+   * Bills what a direct render of the draft's request at that resolution
+   * costs — price it with {@link estimateDraftFinal} first —
    * and bills whoever paid for the draft (its team pool, or you). Only for a
    * completed draft, within 7 days of its creation; repeatable.
    *
@@ -4558,7 +4574,7 @@ export class GenFireClient {
    *   { idempotencyKey: 'lighthouse-draft-1' }
    * );
    * // …once the draft run completes and looks right:
-   * const final = await client.renderDraftFinal(draft.id, {}, { idempotencyKey: 'lighthouse-final-1' });
+   * const final = await client.renderDraftFinal(draft.id, { resolution: '4k' }, { idempotencyKey: 'lighthouse-final-4k' });
    * ```
    */
   renderDraftFinal(draftId: string, input: RenderDraftFinalRequest = {}, options: RequestOptions = {}): Promise<Run> {
@@ -4571,11 +4587,19 @@ export class GenFireClient {
   }
 
   /**
-   * The exact credits {@link renderDraftFinal} will charge for this draft, and
-   * `expires_at` — after it the draft can no longer be finished. Creates nothing.
+   * The exact credits {@link renderDraftFinal} will charge for this draft at
+   * `resolution` (1080p by default), and `expires_at` — after it the draft can
+   * no longer be finished. Creates nothing. The second argument is an
+   * AbortSignal (as before) or `{ resolution, signal }`.
    */
-  estimateDraftFinal(draftId: string, signal?: AbortSignal): Promise<DraftFinalEstimate> {
-    return this.request<DraftFinalEstimate>('POST', `/videos/generations/${encodeURIComponent(draftId)}/final/estimate`, { body: {}, signal });
+  estimateDraftFinal(draftId: string, signalOrOptions?: AbortSignal | EstimateDraftFinalOptions): Promise<DraftFinalEstimate> {
+    const options: EstimateDraftFinalOptions = signalOrOptions && 'aborted' in signalOrOptions
+      ? { signal: signalOrOptions }
+      : (signalOrOptions as EstimateDraftFinalOptions | undefined) ?? {};
+    return this.request<DraftFinalEstimate>('POST', `/videos/generations/${encodeURIComponent(draftId)}/final/estimate`, {
+      body: options.resolution ? { resolution: options.resolution } : {},
+      signal: options.signal
+    });
   }
 
   // ── Genfire Genjudo ────────────────────────────────────────────────────────────
